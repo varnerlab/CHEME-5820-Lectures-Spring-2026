@@ -11,10 +11,10 @@ This function computes the dominant eigenvector and eigenvalue of a matrix using
 - `ϵ::Float64 = 0.0001`: The convergence criterion (optional).
 
 ### Output
-- A tuple containing the dominant eigenvector and eigenvalue.
+- A named tuple containing the dominant eigenvector and eigenvalue.
 """
 function poweriteration(A::Array{<:Number,2}, v::Array{<:Number,1}; 
-    maxiter::Int = 100, ϵ::Float64 = 0.0001):: Tuple{Array{<:Number,1}, Number}
+    maxiter::Int = 100, ϵ::Float64 = 0.0001)::NamedTuple
 
     # initialize
     loopcount = 1;
@@ -40,5 +40,5 @@ function poweriteration(A::Array{<:Number,2}, v::Array{<:Number,1};
     λ = dot(A * v, v) / dot(v, v);
 
     # return the result
-    return (v, λ);
+    return (vector = v, value = λ);
 end
