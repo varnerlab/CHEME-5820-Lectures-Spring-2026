@@ -20,11 +20,33 @@ Today, we will use the following examples to illustrate key concepts:
 ___
 
 ## Recap: Training Challenges with RNNs
-In the [L12a lecture on Recurrent Neural Networks](CHEME-5820-L12a-Lecture-RecurrentNetworks-Spring-2026.ipynb), we saw that Elman RNNs are trained using _backpropagation through time_ (BPTT), which unrolls the network across time steps to compute gradients. The recurrent weight matrix $\mathbf{U}_h$ appears in the computation of all hidden states, so computing gradients requires backpropagating through products of Jacobian matrices across time steps.
+In the [L12a lecture on Recurrent Neural Networks](CHEME-5820-L12a-Lecture-RecurrentNetworks-Spring-2026.ipynb), we introduced the Elman RNNs:
+
+> __Elman RNN Architecture__
+>
+> The following equations describe the Elman RNN:
+> $$
+\boxed{
+\begin{align*}
+\mathbf{h}_t &= \sigma_{h}(\mathbf{U}_h \mathbf{h}_{t-1} + \mathbf{W}_x \mathbf{x}_t + \mathbf{b}_h) \\
+\mathbf{y}_t &= \sigma_{y}(\mathbf{W}_y \mathbf{h}_t + \mathbf{b}_y)
+\end{align*}}
+> $$
+> where the parameters are:
+> * __Network weights__: the term $\mathbf{U}_h\in\mathbb{R}^{h\times{h}}$ denotes the weight matrix for the hidden state, $\mathbf{W}_x\in\mathbb{R}^{h\times{d_{in}}}$ denotes the weight matrix for the input, and $\mathbf{W}_y\in\mathbb{R}^{d_{out}\times{h}}$ is the weight matrix for the output
+> * __Network bias__: the $\mathbf{b}_h\in\mathbb{R}^{h}$ terms denote the bias vector for the hidden state, and $\mathbf{b}_y\in\mathbb{R}^{d_{out}}$ is the bias vector for the output.
+> * __Activation function__: the $\sigma_{h}$ function is a _hidden layer activation function_, such as the sigmoid or hyperbolic tangent (tanh) function, which introduces non-linearity into the RNN. The activation function $\sigma_{y}$ is an _output activation function_ that can be a softmax function for classification tasks or a linear function for regression tasks, or also a non-linear function depending on the problem at hand.
+
+The Elman RNN is trained using _backpropagation through time_ (BPTT), which unrolls the network across time steps to compute gradients. The recurrent weight matrix $\mathbf{U}_h$ appears in the computation of all hidden states, so computing gradients requires backpropagating through products of matrices across time steps, leading to __vanishing and exploding gradients__:
 
 > __Vanishing and exploding gradients__
 >
-> When the eigenvalues of the recurrent weight matrix satisfy $|\lambda| < 1$, the gradient products decay exponentially with time depth, causing gradients from distant time steps to vanish. When $|\lambda| > 1$, these products grow exponentially, causing gradients to explode. Both scenarios prevent the network from learning long-range temporal dependencies.
+> The gradient of the loss with respect to an early hidden state involves a product of Jacobians of the form $\mathbf{J}_t = \mathbf{U}_h^{\top}\,\text{diag}(\sigma_h'(\mathbf{a}_t))$ across time steps, where $\sigma_h'$ is the derivative of the hidden activation and $\mathbf{a}_t = \mathbf{U}_h \mathbf{h}_{t-1} + \mathbf{W}_x \mathbf{x}_t + \mathbf{b}_h$ is its preactivation. 
+> * __Spectral radius__: The _spectral radius_ of a square matrix $\mathbf{A}\in\mathbb{R}^{n\times n}$ is defined as: $\rho(\mathbf{A}) = \max_{i=1,\dots,n}|\lambda_i(\mathbf{A})|$, i.e., the largest absolute value among its (possibly complex) eigenvalues. By [Gelfand's formula](https://en.wikipedia.org/wiki/Spectral_radius#Gelfand's_formula), $\rho(\mathbf{A}) = \lim_{k\to\infty}\|\mathbf{A}^{k}\|^{1/k}$, so $\rho$ governs the asymptotic growth (or decay) of repeated matrix products. 
+> * __Spectral norm__: The _spectral norm_ of a matrix $\mathbf{A}\in\mathbb{R}^{m\times n}$ is the operator norm induced by the Euclidean vector norm, $\|\mathbf{A}\|_{2} = \max_{\mathbf{x}\neq\mathbf{0}}\|\mathbf{A}\mathbf{x}\|_{2}/\|\mathbf{x}\|_{2} = \sigma_{\max}(\mathbf{A})$, i.e., the largest singular value of $\mathbf{A}$. It satisfies $\rho(\mathbf{A}) \leq \|\mathbf{A}\|_{2}$ for any square $\mathbf{A}$, with equality when $\mathbf{A}$ is normal ($\mathbf{A}\mathbf{A}^{\top} = \mathbf{A}^{\top}\mathbf{A}$ for a real matrix).
+> * __Vanishing and exploding gradients__: When the spectral radius of the Jacobian product satisfies $\rho < 1$, the gradient products decay exponentially with time depth, causing gradients from distant time steps to vanish. When $\rho > 1$, these products grow exponentially, causing gradients to explode. 
+>
+> Because $\|\sigma_h'\|_{\infty} \leq 1$ for $\tanh$ and sigmoid, the spectral norm of $\mathbf{U}_h$ is the upper-bound of the per-step contraction, so $\|\mathbf{U}_h\|_{2} < 1$ is sufficient (but not necessary) for vanishing. Both scenarios prevent the network from learning long-range temporal dependencies.
 
 Can we design an architecture that avoids this problem? The key insight is to introduce a _cell state_ that flows through the network with minimal transformation, providing a direct path for gradients to flow backward through many time steps. This is the idea behind LSTM networks.
 
@@ -42,6 +64,8 @@ Can we design an architecture that avoids this problem? The key insight is to in
 ## What are Long Short-Term Memory (LSTM) Networks?
 Long Short-Term Memory (LSTM) networks are a class of gated recurrent neural networks designed to capture long-range temporal dependencies by maintaining a _cell state_ that acts as a gradient highway. LSTMs were introduced by [Hochreiter and Schmidhuber (1997)](https://doi.org/10.1162/neco.1997.9.8.1735).
 
+To get started with LSTMs, let's watch [a Video from the IBM technology channel about LSTMs](https://www.yout-ube.com/watch?v=b61DPVFX03I)
+
 > __How are LSTMs different from Elman RNNs?__
 >
 > * __Do Elman RNNs have a cell state?__ No. Elman RNNs have a single hidden state $\mathbf{h}_t$ that is overwritten at each time step via a nonlinear transformation. This creates the long chain of Jacobian products that causes vanishing or exploding gradients.
@@ -50,7 +74,7 @@ Long Short-Term Memory (LSTM) networks are a class of gated recurrent neural net
 Let's look at two gated architectures: the LSTM and the GRU.
 
 ### LSTM Network: Mathematical Formulation
-The LSTM cell uses three gates to control information flow through the cell state. At each time step, the LSTM takes an input, the previous hidden state, and the previous cell state, and computes the output at time $t$. Let the input vector at time $t$ be denoted as $\mathbf{x}_t\in\mathbb{R}^{d_{in}}$, the hidden state at time $t$ as $\mathbf{h}_t\in\mathbb{R}^{h}$, and the cell state at time $t$ as $\mathbf{c}_t\in\mathbb{R}^{h}$.
+The LSTM cell uses _three gates_ to control information flow through the cell state. At each time step, the LSTM takes an input, the previous hidden state, and the previous cell state, and computes the output at time $t$. Let the input vector at time $t$ be denoted as $\mathbf{x}_t\in\mathbb{R}^{d_{in}}$, the hidden state at time $t$ as $\mathbf{h}_t\in\mathbb{R}^{h}$, and the cell state at time $t$ as $\mathbf{c}_t\in\mathbb{R}^{h}$.
 
 > __LSTM Architecture__
 >
@@ -72,6 +96,7 @@ The LSTM cell uses three gates to control information flow through the cell stat
 > * __Gate biases__: the terms $\mathbf{b}_f, \mathbf{b}_i, \mathbf{b}_c, \mathbf{b}_o\in\mathbb{R}^{h}$ are the bias vectors for each gate
 > * __Output weights__: the term $\mathbf{V}_y\in\mathbb{R}^{d_{out}\times{h}}$ is the output projection matrix and $\mathbf{b}_y\in\mathbb{R}^{d_{out}}$ is the output bias vector
 > * __Activation functions__: the $\sigma$ function is the sigmoid function for gates (outputs in $(0,1)$), $\tanh$ is used for candidate cell state and hidden state, and $\sigma_y$ is the output activation function (sigmoid for normalized targets, linear for regression)
+> * __Element-wise product__: the symbol $\odot$ denotes the element-wise (Hadamard) product, where $(\mathbf{a} \odot \mathbf{b})_i = a_i b_i$ for vectors $\mathbf{a}, \mathbf{b}\in\mathbb{R}^{h}$
 
 Each gate serves a specific role. The __forget gate__ $\mathbf{f}_t$ controls what information to discard from the previous cell state. The __input gate__ $\mathbf{i}_t$ controls what new information to write to the cell state. The __output gate__ $\mathbf{o}_t$ controls what information from the cell state to expose as the hidden state.
 
@@ -105,6 +130,15 @@ Then the parameter count is:
 
 Compare this to an Elman RNN with the same dimensions: $N_{total}^{\text{Elman}} = 128 \times 139 + 903 = 17{,}792 + 903 = 18{,}695$ parameters. The LSTM has approximately $4\times$ more parameters because it has four gate computations instead of one hidden state computation. These additional parameters enable the LSTM to learn what to remember and what to forget, but the weights are still **reused across all time steps**.
 
+
+Let's look at an example of a RNN in action on a time series prediction task, namely, the prediction of Thrombin activation. 
+
+> __Example: LSTMs for Time Series Prediction__
+>
+> * [▶ Fed-Batch CHO Culture Simulation](CHEME-5820-L12c-Advanced-CHO-Simulation-Spring-2026.ipynb). In this notebook, we simulate a fed-batch CHO cell culture using an ODE model and explore how different parameters affect the bioreactor trajectory. 
+>
+> * [▶ LSTMs for Time Series Prediction](CHEME-5820-L12c-Example-LSTM-CHO-Spring-2026.ipynb). In this example, we apply LSTMs to forecast time series data from the fed-batch CHO simulation. We train the LSTM to predict all seven bioreactor states (volume, biomass, glucose, glutamine, antibody, lactate, ammonia) conditioned on a glucose-triggered feed policy.
+
 ___
 
 ### GRU Network: Mathematical Formulation
@@ -123,13 +157,16 @@ __At each time step__: a GRU takes an input and the previous hidden state and co
 \mathbf{z}_t &= \sigma(\mathbf{W}_z \mathbf{x}_t + \mathbf{U}_z \mathbf{h}_{t-1} + \mathbf{b}_z) & \text{(update gate)} \\
 \mathbf{r}_t &= \sigma(\mathbf{W}_r \mathbf{x}_t + \mathbf{U}_r \mathbf{h}_{t-1} + \mathbf{b}_r) & \text{(reset gate)} \\
 \tilde{\mathbf{h}}_t &= \tanh(\mathbf{W}_h \mathbf{x}_t + \mathbf{U}_h (\mathbf{r}_t \odot \mathbf{h}_{t-1}) + \mathbf{b}_h) & \text{(candidate hidden state)} \\
-\mathbf{h}_t &= (1 - \mathbf{z}_t) \odot \mathbf{h}_{t-1} + \mathbf{z}_t \odot \tilde{\mathbf{h}}_t & \text{(hidden state update)}
+\mathbf{h}_t &= (1 - \mathbf{z}_t) \odot \mathbf{h}_{t-1} + \mathbf{z}_t \odot \tilde{\mathbf{h}}_t & \text{(hidden state update)} \\
+\mathbf{y}_t &= \sigma_y(\mathbf{V}_y \mathbf{h}_t + \mathbf{b}_y) & \text{(output)}
 \end{align*}}
 > $$
 > where the parameters are:
 > * __Gate weights__: the terms $\mathbf{W}_z, \mathbf{W}_r, \mathbf{W}_h\in\mathbb{R}^{h\times{d_{in}}}$ are the input weight matrices, $\mathbf{U}_z, \mathbf{U}_r, \mathbf{U}_h\in\mathbb{R}^{h\times{h}}$ are the recurrent weight matrices
 > * __Gate biases__: the terms $\mathbf{b}_z, \mathbf{b}_r, \mathbf{b}_h\in\mathbb{R}^{h}$ are the bias vectors for each gate
-> * __Activation functions__: the $\sigma$ function is the sigmoid function for gates, and $\tanh$ is used for the candidate hidden state
+> * __Output weights__: the term $\mathbf{V}_y\in\mathbb{R}^{d_{out}\times{h}}$ is the output projection matrix and $\mathbf{b}_y\in\mathbb{R}^{d_{out}}$ is the output bias vector
+> * __Activation functions__: the $\sigma$ function is the sigmoid function for gates, $\tanh$ is used for the candidate hidden state, and $\sigma_y$ is the output activation function (sigmoid for normalized targets, linear for regression)
+> * __Element-wise product__: the symbol $\odot$ denotes the element-wise (Hadamard) product, where $(\mathbf{a} \odot \mathbf{b})_i = a_i b_i$ for vectors $\mathbf{a}, \mathbf{b}\in\mathbb{R}^{h}$
 
 How many parameters are there in the GRU?
 
@@ -137,7 +174,7 @@ How many parameters are there in the GRU?
 >
 > The number of parameters in a GRU can be calculated as follows:
 > * _Gates_: Each of the 3 gates (update, reset, candidate) has $h(d_{in} + h + 1)$ parameters, giving $N_{gates} = 3h(h + d_{in} + 1)$
-> * _Output_: The output projection has $N_{output} = d_{out}(h + 1)$
+> * _Output_: The output projection has $N_{output} = d_{out}h + d_{out} = d_{out}(h + 1)$
 >
 > The total number of parameters in the GRU is given by:
 > $$
