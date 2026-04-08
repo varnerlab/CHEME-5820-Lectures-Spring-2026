@@ -16,7 +16,10 @@
       "Bash(inkscape Fig-Autoencoder-Architecture.pdf --export-filename=Fig-Autoencoder-Architecture.svg --export-type=svg)",
       "Bash(dvisvgm:*)",
       "Bash(inkscape:*)",
-      "Bash(claude auth:*)"
+      "Bash(claude auth:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git push:*)"
     ]
   }
 }
