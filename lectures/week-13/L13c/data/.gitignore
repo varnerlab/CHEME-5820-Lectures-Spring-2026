@@ -1,0 +1,6 @@
+# Tiny Shakespeare corpus (auto-downloaded)
+input.txt
+tinyshakespeare.txt
+
+# Trained model checkpoints (regenerated on first run)
+*.jld2
