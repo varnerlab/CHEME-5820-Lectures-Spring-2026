@@ -12,7 +12,7 @@ const _PATH_TO_FIGS = joinpath(_ROOT, "figs");
 using Pkg;
 Pkg.activate(_ROOT);
 if (isfile(joinpath(_ROOT, "Manifest.toml")) == false)
-    Pkg.resolve(); Pkg.instantiate(); Pkg.update();
+    Pkg.activate("."); Pkg.resolve(); Pkg.instantiate(); Pkg.update();
 end
 
 # load external packages -
