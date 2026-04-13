@@ -23,6 +23,7 @@ include(joinpath(@__DIR__, "Include.jl")); # include the Include.jl file
 ```
 
     [32m[1m  Activating[22m[39m project at `~/Desktop/julia_work/CHEME-5820-instances/Spring-2026/CHEME-5820-Lectures-Spring-2026/lectures/week-13/L13a`
+    project at `~/Desktop/julia_work/CHEME-5820-instances/Spring-2026/CHEME-5820-Lectures-Spring-2026/lectures/week-13/L13a`
 
 
 In addition to standard Julia libraries, we'll also use [the `VLDataScienceMachineLearningPackage.jl` package](https://github.com/varnerlab/VLDataScienceMachineLearningPackage.jl). Check out [the documentation](https://varnerlab.github.io/VLDataScienceMachineLearningPackage.jl/dev/) for more information on the functions, types, and data used in this material.
@@ -140,9 +141,7 @@ end
 
 
 ### Constants
-We define embedding and sequence constants used throughout the example. The embedding dimension `D_EMB` matches the GloVe vector size, and the maximum sequence length `N_MAX` controls padding and truncation of reviews.
-
-The padded sequences are stored in `X_seq` (a `d × n_max × N` tensor of GloVe vectors), the boolean padding mask in `mask` (`n_max × N`), and the per-review token strings in `tokens_str`.
+We define constants used throughout the example. The embedding dimension `D_EMB` matches the GloVe vector size, and the maximum sequence length `N_MAX` controls padding and truncation of reviews. The class names `CLASS_NAMES` and class count `N_CLASSES` are defined in the label-encoding cell below.
 
 
 ```julia
@@ -163,6 +162,8 @@ X_seq, mask, tokens_str = embed_reviews_sequence(string.(reviews_df.review), glo
     └ @ Main /Users/jeffreyvarner/Desktop/julia_work/CHEME-5820-instances/Spring-2026/CHEME-5820-Lectures-Spring-2026/lectures/week-13/L13a/jl_notebook_cell_df34fa98e69747e1a8f8a730347b8e2f_Y454sZmlsZQ==.jl:7
 
 
+The padded sequences are stored in `X_seq` (a `d × n_max × N` tensor of GloVe vectors), the boolean padding mask in `mask` (`n_max × N`), and the per-review token strings in `tokens_str`.
+
 Next, we encode the three labels (positive / negative / neutral) as integer indices and one-hot vectors. The label mapping is stored in `label_to_idx`, the integer labels in `y_idx`, and the one-hot matrix in `y_onehot`.
 
 
@@ -179,23 +180,23 @@ We then take an 80/20 train/test split. The training and test tensors are stored
 
 
 ```julia
-X_train_seq, mask_train, y_train, X_test_seq, mask_test, y_test = let
+X_train_seq, mask_train, y_train, X_test_seq, mask_test, y_test, TRAIN_IDX, TEST_IDX = let
 
     # shuffle and split into 80% train / 20% test
     Random.seed!(42);
     N = size(X_seq, 3);             # total number of reviews
     perm = randperm(N);             # random permutation of review indices
     n_train = round(Int, 0.8 * N); # number of training reviews
-    global TRAIN_IDX = perm[1:n_train];       # training indices (used later for baseline)
-    global TEST_IDX  = perm[n_train+1:end];   # test indices (used later for baseline)
+    train_idx = perm[1:n_train];       # training indices (used later for baseline)
+    test_idx  = perm[n_train+1:end];   # test indices (used later for baseline)
 
     # slice the sequence tensors, masks, and labels by train/test indices
-    X_train_seq, mask_train, y_train = X_seq[:, :, TRAIN_IDX], mask[:, TRAIN_IDX], y_onehot[:, TRAIN_IDX];
-    X_test_seq,  mask_test,  y_test  = X_seq[:, :, TEST_IDX],  mask[:, TEST_IDX],  y_onehot[:, TEST_IDX];
+    X_train_seq, mask_train, y_train = X_seq[:, :, train_idx], mask[:, train_idx], y_onehot[:, train_idx];
+    X_test_seq,  mask_test,  y_test  = X_seq[:, :, test_idx],  mask[:, test_idx],  y_onehot[:, test_idx];
     @info "split" n_train=size(X_train_seq, 3) n_test=size(X_test_seq, 3)
 
     # return -
-    (X_train_seq, mask_train, y_train, X_test_seq, mask_test, y_test)
+    (X_train_seq, mask_train, y_train, X_test_seq, mask_test, y_test, train_idx, test_idx)
 end
 ```
 
@@ -212,7 +213,7 @@ end
 ___
 
 ## Task 1: Build the Self-Attention Classifier
-In this task, we will build a self-attention classifier for sentiment analysis. The model is built using three components:
+The model is built from three pieces, all defined in [src/Attention.jl](src/Attention.jl).
 
 > __Architecture__
 >
@@ -220,25 +221,25 @@ In this task, we will build a self-attention classifier for sentiment analysis. 
 > * __Masked mean-pool__: averages the attention output over valid sequence positions only, producing a single vector per review.
 > * __MLP head__: a two-layer feedforward network `Dense(d_v → d_hidden, relu) → Dense(d_hidden → 3)` that maps the pooled vector to class logits.
 
-We use $d_{k} = d_{v} = 32$ (so the projections compress the $100$-dimensional GloVe vectors), and a hidden dimension of $64$ in the MLP head. The trained model is stored in `model` (an `AttentionClassifier` instance) and the total number of trainable parameters in `n_params`.
+We use $d_{k} = d_{v} = 32$ (so the projections compress the $100$-dimensional GloVe vectors), and a hidden dimension of $64$ in the MLP head. The model is stored in `model` (an `AttentionClassifier` instance) and the total number of trainable parameters in `n_params`.
 
 
 ```julia
-model, n_params = let
+model, n_params, D_HIDDEN = let
 
     # initialize - set the projection and hidden dimensions
     d_k = 32;           # query/key projection dimension
     d_v = 32;           # value projection dimension
-    global D_HIDDEN = 64; # MLP hidden layer width (used later for baseline)
+    d_hidden = 64;      # MLP hidden layer width (used later for baseline)
 
     # build the self-attention classifier: SelfAttention → mean-pool → MLP head
     Random.seed!(42);
-    model = AttentionClassifier(D_EMB, d_k, d_v, D_HIDDEN, N_CLASSES);
+    model = AttentionClassifier(D_EMB, d_k, d_v, d_hidden, N_CLASSES);
     n_params = sum(length, Flux.trainables(model)); # count total trainable parameters
-    @info "self-attention classifier" n_params=n_params d_emb=D_EMB d_k=d_k d_v=d_v d_hidden=D_HIDDEN
+    @info "self-attention classifier" n_params=n_params d_emb=D_EMB d_k=d_k d_v=d_v d_hidden=d_hidden
 
     # return -
-    (model, n_params)
+    (model, n_params, d_hidden)
 end
 ```
 
@@ -258,7 +259,7 @@ end
 ___
 
 ## Task 2: Train the Self-Attention Classifier
-In this task, we will train the self-attention classifier. We train with Adam at learning rate $3\times 10^{-3}$ for $30$ epochs at batch size $32$. The first run trains and saves a checkpoint to `data/attention_sentiment_H64.jld2`; subsequent runs detect the checkpoint and load it instead of retraining.
+We train with Adam at learning rate $3\times 10^{-3}$ for $30$ epochs at batch size $32$. The first run trains and saves a checkpoint to `data/attention_sentiment_H64.jld2`; subsequent runs detect the checkpoint and load it instead of retraining.
 
 > __Note__: The training cell checks for a saved checkpoint before training. If a checkpoint exists, the model weights are loaded directly. Otherwise, the model is trained from scratch and the checkpoint is saved for future runs.
 
@@ -380,7 +381,7 @@ end
 ___
 
 ## Task 3: Evaluate and Compare with Baseline
-In this task, we compute test accuracy and a confusion matrix to see which classes the self-attention model gets right and where it makes mistakes. Then we train the L10b mean-pool baseline on the same train/test split for an apples-to-apples comparison.
+We compute test accuracy and a confusion matrix to see which classes the self-attention model gets right and where it makes mistakes. Then we train the L10b mean-pool baseline on the same train/test split for an apples-to-apples comparison.
 
 > __Evaluation strategy.__ We compare the self-attention classifier against the L10b mean-pool baseline on the same held-out test set. The baseline takes the mean of GloVe vectors for each review (collapsing the sequence into a single $100$-dimensional vector) and runs it through the same MLP head architecture. By holding the train/test split fixed, the only difference is whether the model sees a single mean vector or the full token sequence.
 
@@ -388,20 +389,24 @@ Let's compute the confusion matrix for the self-attention model.
 
 
 ```julia
-let
+test_pred, test_true, test_acc, C_attn, cm_labels = let
+
     # compute predictions on the held-out test set
     test_logits = model(X_test_seq, mask_test);               # (n_classes, n_test) logits
-    global test_pred = Flux.onecold(test_logits);              # predicted class indices
-    global test_true = Flux.onecold(y_test);                   # true class indices
-    global test_acc = mean(test_pred .== test_true);           # test accuracy
+    test_pred = Flux.onecold(test_logits);              # predicted class indices
+    test_true = Flux.onecold(y_test);                   # true class indices
+    test_acc = mean(test_pred .== test_true);           # test accuracy
     @info "self-attention test accuracy" acc=round(test_acc, digits=4)
 
     # build and display the confusion matrix (rows = true class, cols = predicted class)
-    global C_attn = confusion_matrix(test_true, test_pred, N_CLASSES);
-    global cm_labels = ["true \\ pred"; CLASS_NAMES];
+    C_attn = confusion_matrix(test_true, test_pred, N_CLASSES);
+    cm_labels = ["true \\ pred"; CLASS_NAMES];
     println("Confusion matrix (rows = true, cols = predicted):");
     rows = [[CLASS_NAMES[i]; C_attn[i, :]] for i in 1:N_CLASSES];
     pretty_table(reduce(vcat, [permutedims(r) for r in rows]); column_labels=cm_labels)
+
+    # return -
+    (test_pred, test_true, test_acc, C_attn, cm_labels)
 end
 ```
 
@@ -441,18 +446,19 @@ Next, we train the baseline model on the same split and evaluate its test accura
 
 
 ```julia
-let
+baseline, n_baseline_params, baseline_loss_history, baseline_pred, baseline_acc = let
+
     # build the L10b baseline: same MLP head architecture, but input is a single mean vector
     Random.seed!(42);
-    global baseline = Chain(Dense(D_EMB => D_HIDDEN, relu), Dense(D_HIDDEN => N_CLASSES));
-    global n_baseline_params = sum(length, Flux.trainables(baseline));
+    baseline = Chain(Dense(D_EMB => D_HIDDEN, relu), Dense(D_HIDDEN => N_CLASSES));
+    n_baseline_params = sum(length, Flux.trainables(baseline));
     @info "L10b mean-pool baseline" n_params=n_baseline_params
 
     # train with Adam for the same number of epochs and batch size as the self-attention model
     n_epochs = 30;
     batchsize = 32;
     opt_b = Flux.setup(Adam(3.0f-3), baseline);
-    global baseline_loss_history = Float32[];
+    baseline_loss_history = Float32[];
     n_tr = size(X_train_mean, 2);
 
     for epoch in 1:n_epochs
@@ -472,8 +478,8 @@ let
     end
 
     # evaluate baseline on the same test set
-    global baseline_pred = Flux.onecold(baseline(X_test_mean)); # predicted class indices
-    global baseline_acc = mean(baseline_pred .== test_true);     # test accuracy
+    baseline_pred = Flux.onecold(baseline(X_test_mean)); # predicted class indices
+    baseline_acc = mean(baseline_pred .== test_true);     # test accuracy
     @info "L10b baseline test accuracy" acc=round(baseline_acc, digits=4)
 
     # display baseline confusion matrix
@@ -481,6 +487,9 @@ let
     println("Baseline confusion matrix (rows = true, cols = predicted):");
     rows_b = [[CLASS_NAMES[i]; C_base[i, :]] for i in 1:N_CLASSES];
     pretty_table(reduce(vcat, [permutedims(r) for r in rows_b]); column_labels=cm_labels)
+
+    # return -
+    (baseline, n_baseline_params, baseline_loss_history, baseline_pred, baseline_acc)
 end
 ```
 
@@ -531,25 +540,29 @@ Each row of the attention matrix is a probability distribution over the keys, te
 
 
 ```julia
-let
+attn_pred_test, base_pred_test, POS_IDX, NEG_IDX, sarc_candidates = let
+
     # compute both models' predictions on the test set
-    global attn_pred_test = Flux.onecold(model(X_test_seq, mask_test));  # self-attention predictions
-    global base_pred_test = Flux.onecold(baseline(X_test_mean));          # baseline predictions
-    global POS_IDX = label_to_idx["positive"];
-    global NEG_IDX = label_to_idx["negative"];
+    attn_pred_test = Flux.onecold(model(X_test_seq, mask_test));  # self-attention predictions
+    base_pred_test = Flux.onecold(baseline(X_test_mean));          # baseline predictions
+    pos_idx = label_to_idx["positive"];
+    neg_idx = label_to_idx["negative"];
 
     # find sarcastic reviews where self-attention is correct but baseline fails.
-    # these reviews use positive vocabulary ("amazing", "love", etc.) but are labeled negative.
+    # require both positive vocabulary AND an obvious sarcastic cue so the
+    # displayed example reads as genuinely sarcastic (not stealth-positive).
     POS_VOCAB = r"(amazing|fantastic|wonderful|love|incredible|delicious|smooth|perfect|outstanding|brilliant|best|favorite|deligh|impress|treasure)"i
+    SARC_CUE  = r"(disappoint|battery acid|burnt|watery|terrible|zero energy|bad|headache|ineffective|cheap|mediocre|regret|nonexistent|hates|worst enemy|dislike|never buying|sink|down the)"i
 
-    global sarc_candidates = findall(i ->
-        test_true[i] == NEG_IDX &&              # true label is negative
-        attn_pred_test[i] == NEG_IDX &&          # self-attention predicts negative (correct)
-        base_pred_test[i] != NEG_IDX &&          # baseline predicts something else (wrong)
-        occursin(POS_VOCAB, reviews_df.review[TEST_IDX[i]]),  # review contains positive vocabulary
+    sarc_candidates = findall(i ->
+        test_true[i] == neg_idx &&              # true label is negative
+        attn_pred_test[i] == neg_idx &&          # self-attention predicts negative (correct)
+        base_pred_test[i] != neg_idx &&          # baseline predicts something else (wrong)
+        occursin(POS_VOCAB, reviews_df.review[TEST_IDX[i]]) &&  # review contains positive vocabulary
+        occursin(SARC_CUE, reviews_df.review[TEST_IDX[i]]),     # review contains a sarcastic cue
         1:length(test_true));
 
-    @info "stealth-sarcastic wins" n=length(sarc_candidates)
+    @info "sarcastic wins" n=length(sarc_candidates)
 
     # print the first sarcastic example where self-attention wins
     if !isempty(sarc_candidates)
@@ -561,6 +574,9 @@ let
         println("self-attention predicts: ", CLASS_NAMES[attn_pred_test[si]], "  (correct)");
         println("L10b baseline predicts:  ", CLASS_NAMES[base_pred_test[si]], "  (wrong)");
     end
+
+    # return -
+    (attn_pred_test, base_pred_test, pos_idx, neg_idx, sarc_candidates)
 end
 ```
 
@@ -600,10 +616,11 @@ Next, we look for double-negative reviews where self-attention classifies correc
 
 
 ```julia
-let
+dn_candidates = let
+
     # find double-negative reviews where self-attention is correct but baseline fails.
     # these reviews use heavy negation vocabulary but are labeled positive.
-    global dn_candidates = findall(i ->
+    dn_candidates = findall(i ->
         test_true[i] == POS_IDX &&               # true label is positive
         attn_pred_test[i] == POS_IDX &&           # self-attention predicts positive (correct)
         base_pred_test[i] != POS_IDX &&           # baseline predicts something else (wrong)
@@ -622,6 +639,9 @@ let
         println("self-attention predicts: ", CLASS_NAMES[attn_pred_test[di]], "  (correct)");
         println("L10b baseline predicts:  ", CLASS_NAMES[base_pred_test[di]], "  (wrong)");
     end
+
+    # return -
+    dn_candidates
 end
 ```
 
