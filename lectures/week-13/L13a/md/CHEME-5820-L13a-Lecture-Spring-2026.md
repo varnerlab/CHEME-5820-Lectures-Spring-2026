@@ -21,10 +21,10 @@ Today, we will use the following notebooks to illustrate key concepts:
 
 ___
 
-## Recap: Two Threads from Earlier Lectures
-Self-attention sits at the intersection of two earlier topics in this course. We motivate it by recalling both.
+## Recall
+Self-attention sits at the intersection of two earlier topics in this course: recurrent neural networks and modern Hopfield networks. 
 
-### Thread 1: The Sequential Bottleneck of RNNs
+### Recurrent Networks
 In the [L12a lecture on Recurrent Neural Networks](../../week-12/L12a/CHEME-5820-L12a-Lecture-RecurrentNetworks-Spring-2026.ipynb) and the [L12c lecture on LSTMs](../../week-12/L12c/CHEME-5820-L12c-Lecture-LSTM-Spring-2026.ipynb), we saw that recurrent networks process a sequence one element at a time. The hidden state at time $t$ depends on the hidden state at time $t-1$, which depends on the hidden state at time $t-2$, and so on. This creates two practical problems:
 
 > __Limitations of recurrent processing__
@@ -34,7 +34,7 @@ In the [L12a lecture on Recurrent Neural Networks](../../week-12/L12a/CHEME-5820
 
 We need an architecture in which every position of a sequence can interact with every other position directly, in a single computation, with no recurrence and no sequential bottleneck.
 
-### Thread 2: Modern Hopfield Networks as Single-Head Attention
+### Attention as Modern Hopfield
 In the [L6c lecture on Modern Hopfield Networks](../../week-6/L6c/CHEME-5820-L6c-Lecture-Modern-HopfieldNetworks-Spring-2026.ipynb), we showed that the modern Hopfield retrieval rule of [Ramsauer et al. (2020)](https://arxiv.org/abs/2008.02217) is mathematically equivalent to single-head attention. Recall the update rule:
 
 > __Modern Hopfield Update Rule (recap from L6c)__
@@ -51,16 +51,20 @@ Self-attention takes this rule and makes three changes that turn it into a learn
 
 > __From Modern Hopfield to Self-Attention__
 >
-> * __Three learnable projections instead of one shared $\mathbf{X}$:__ Modern Hopfield uses the same matrix $\mathbf{X}$ for both the comparison ($\mathbf{X}^{\top}\mathbf{s}$) and the retrieval ($\mathbf{X}\,\cdot$). Self-attention separates these by introducing three learnable linear projections of the input: $\mathbf{Q}$ for queries, $\mathbf{K}$ for keys, $\mathbf{V}$ for values. Comparisons are done with $\mathbf{Q}\mathbf{K}^{\top}$, and the retrieval combines the value rows.
-> * __Multiple heads in parallel:__ A single attention computation can only "look up" one type of pattern at a time. Self-attention uses $H$ parallel _attention heads_, each with its own $(\mathbf{Q}, \mathbf{K}, \mathbf{V})$ projections, so the model can look up several kinds of relationships simultaneously.
+> * __Three learnable projections instead of one shared $\mathbf{X}$:__ Modern Hopfield uses the same matrix $\mathbf{X}$ for both the comparison ($\mathbf{X}^{\top}\mathbf{s}$) and the retrieval ($\mathbf{X}\,\cdot$). Self-attention separates these by introducing three learnable projection matrices $\mathbf{W}_{Q}$, $\mathbf{W}_{K}$, $\mathbf{W}_{V}$ that produce queries $\mathbf{Q}$, keys $\mathbf{K}$, and values $\mathbf{V}$. Comparisons are done with $\mathbf{Q}\mathbf{K}^{\top}$, and the retrieval combines the value rows.
+> * __Multiple heads in parallel:__ A single attention computation can only "look up" one type of pattern at a time. Self-attention uses $H$ parallel _attention heads_, each with its own $(\mathbf{W}_{Q}, \mathbf{W}_{K}, \mathbf{W}_{V})$ projections, so the model can look up several kinds of relationships simultaneously.
 > * __Positional information added explicitly:__ The Hopfield rule has no notion of order: it treats memories as an unordered set. Self-attention has the same property, which we prove formally in the [advanced notebook](CHEME-5820-L13a-Advanced-Attention-Derivations-Spring-2026.ipynb). For sequence modeling we restore order by adding _positional encodings_ to the input embeddings.
 
 The transformer block, introduced in [Vaswani et al. (2017) "Attention is All You Need"](https://arxiv.org/abs/1706.03762), assembles these pieces into a single building block that can be stacked to form transformer models like BERT and GPT.
 
+___
+
+The figure below shows the structure of a single transformer block. We build up each component in the following sections, starting with scaled dot-product self-attention, then multi-head attention, positional encoding, and finally the full block with residual connections and layer normalization.
+
 <div>
     <center>
       <img
-        src="figs/transformer_block.svg"
+        src="figs/Fig-Transformer-Block.svg"
         alt="Self-attention block diagram"
         height="600"
         width="900"
@@ -95,15 +99,15 @@ The layer first projects $\mathbf{X}$ into three new matrices: queries $\mathbf{
 \operatorname{Attention}(\mathbf{Q},\mathbf{K},\mathbf{V}) = \operatorname{softmax}\!\left(\frac{\mathbf{Q}\mathbf{K}^{\top}}{\sqrt{d_{k}}}\right)\mathbf{V} \in \mathbb{R}^{n\times d_{v}}
 }
 > $$
-> where the softmax is applied row-wise, so each row of $\mathbf{Q}\mathbf{K}^{\top}/\sqrt{d_{k}}$ is independently normalized to sum to one.
+> where the softmax is applied row-wise, so each row of $\mathbf{Q}\mathbf{K}^{\top}/\sqrt{d_{k}}$ is independently normalized to sum to one. Note: we follow the original [Vaswani et al. (2017)](https://arxiv.org/abs/1706.03762) formulation, which uses bias-free projections. Some implementations add bias terms to the projections, but the standard convention omits them.
 
 There are three things worth pausing on in this equation.
 
 > __Reading the equation piece by piece__
 >
-> * __$\mathbf{Q}\mathbf{K}^{\top}\in\mathbb{R}^{n\times n}$ is a similarity matrix:__ entry $(i,j)$ is the inner product $\mathbf{q}_{i}\cdot\mathbf{k}_{j}$, which measures how much query $i$ is interested in key $j$. The matrix has one row per query and one column per key, so it has shape $n\times n$ regardless of the embedding dimension.
-> * __The $1/\sqrt{d_{k}}$ scaling stabilizes the softmax:__ if the entries of $\mathbf{q}_{i}$ and $\mathbf{k}_{j}$ are independent with mean zero and unit variance, the inner product $\mathbf{q}_{i}\cdot\mathbf{k}_{j}$ has variance $d_{k}$. Dividing by $\sqrt{d_{k}}$ keeps the inputs to the softmax in a regime where gradients do not vanish. We derive this in the [advanced notebook](CHEME-5820-L13a-Advanced-Attention-Derivations-Spring-2026.ipynb).
-> * __Multiplying by $\mathbf{V}$ produces a weighted average of value rows:__ row $i$ of the output is $\sum_{j=1}^{n}\alpha_{ij}\mathbf{v}_{j}$, where $\alpha_{ij}$ is the $(i,j)$ entry of the softmax matrix. So output row $i$ is the answer to the question "given query $\mathbf{q}_{i}$, what mixture of value rows is the best response?"
+> * __The $\mathbf{Q}\mathbf{K}^{\top}\in\mathbb{R}^{n\times n}$ is a similarity matrix:__ entry $(i,j)$ is the inner product $\langle\mathbf{q}_{i},\mathbf{k}_{j}\rangle$, which measures how much query $i$ is interested in key $j$. The matrix has one row per query and one column per key, so it has shape $n\times n$ regardless of the embedding dimension.
+> * __The $1/\sqrt{d_{k}}$ scaling stabilizes the softmax:__ if the entries of $\mathbf{q}_{i}$ and $\mathbf{k}_{j}$ are independent with mean zero and unit variance, the inner product $\langle\mathbf{q}_{i},\mathbf{k}_{j}\rangle$ has variance $d_{k}$. Dividing by $\sqrt{d_{k}}$ keeps the inputs to the softmax in a regime where gradients do not vanish. We derive this in the [advanced notebook](CHEME-5820-L13a-Advanced-Attention-Derivations-Spring-2026.ipynb).
+> * __Multiplying by $\mathbf{V}$ produces a weighted average of value rows:__ row $i$ of the output is $\sum_{j=1}^{n}\alpha_{ij}\mathbf{v}_{j}$, where $\alpha_{ij}$ is the $(i,j)$ entry of the softmax matrix. So output row $i$ is the attention-weighted combination of value rows for query $\mathbf{q}_{i}$.
 
 How many parameters are in a single self-attention layer?
 
@@ -130,9 +134,9 @@ A single attention computation can only express one kind of relationship between
 > __Multi-Head Self-Attention__
 >
 > Let $\mathbf{X}\in\mathbb{R}^{n\times d}$ be the input and let $H$ be the number of attention heads. For each head $h = 1, 2, \ldots, H$, define learnable projection matrices:
-> * $\mathbf{W}_{Q}^{(h)}\in\mathbb{R}^{d\times d_{k}}$
-> * $\mathbf{W}_{K}^{(h)}\in\mathbb{R}^{d\times d_{k}}$
-> * $\mathbf{W}_{V}^{(h)}\in\mathbb{R}^{d\times d_{v}}$
+> * $\mathbf{W}_{Q}^{(h)}\in\mathbb{R}^{d\times d_{k}}$ projects the input to queries for head $h$
+> * $\mathbf{W}_{K}^{(h)}\in\mathbb{R}^{d\times d_{k}}$ projects the input to keys for head $h$
+> * $\mathbf{W}_{V}^{(h)}\in\mathbb{R}^{d\times d_{v}}$ projects the input to values for head $h$
 >
 > Compute the output of each head as a single self-attention layer:
 > $$
@@ -222,11 +226,11 @@ We have not formally introduced layer normalization in this course, so a brief d
 > $$
 > where the position-wise feedforward sublayer applies the same two-layer MLP to every row of its input independently:
 > $$
-\operatorname{FFN}(\mathbf{u}) = \mathbf{W}_{2}\,\sigma\!\left(\mathbf{W}_{1}\,\mathbf{u} + \mathbf{b}_{1}\right) + \mathbf{b}_{2}
+\operatorname{FFN}(\mathbf{u}) = \sigma\!\left(\mathbf{u}\,\mathbf{W}_{1} + \mathbf{b}_{1}\right)\mathbf{W}_{2} + \mathbf{b}_{2}
 > $$
-> with $\mathbf{W}_{1}\in\mathbb{R}^{d_{ff}\times d}$, $\mathbf{W}_{2}\in\mathbb{R}^{d\times d_{ff}}$, biases $\mathbf{b}_{1}\in\mathbb{R}^{d_{ff}}$ and $\mathbf{b}_{2}\in\mathbb{R}^{d}$, and a nonlinearity $\sigma$ such as ReLU or GELU. The hidden dimension $d_{ff}$ is typically chosen as $4d$.
+> with $\mathbf{W}_{1}\in\mathbb{R}^{d\times d_{ff}}$, $\mathbf{W}_{2}\in\mathbb{R}^{d_{ff}\times d}$, biases $\mathbf{b}_{1}\in\mathbb{R}^{d_{ff}}$ and $\mathbf{b}_{2}\in\mathbb{R}^{d}$, and a nonlinearity $\sigma$ such as ReLU or GELU. The hidden dimension $d_{ff}$ is typically chosen as $4d$. Here $\mathbf{u}\in\mathbb{R}^{d}$ is a single row (token embedding), following the same row-vector convention used for the attention equations above.
 
-The residual connection $\mathbf{X} + (\cdot)$ around each sublayer plays the same role as the cell state in an LSTM: it provides a direct path for gradients to flow backward through the block, which makes deep stacks of transformer blocks trainable.
+The residual connection $\mathbf{X} + (\cdot)$ around each sublayer provides a direct path for gradients to flow backward through the block, similar in spirit to the LSTM cell state, though without the learned gating that controls what information to preserve or overwrite. This direct gradient path is what makes deep stacks of transformer blocks trainable.
 
 ### Parameter Count of One Transformer Block
 
@@ -234,7 +238,7 @@ The residual connection $\mathbf{X} + (\cdot)$ around each sublayer plays the sa
 >
 > A single transformer block with model dimension $d$, $H$ attention heads, and feedforward dimension $d_{ff} = 4d$ contains:
 > * _Multi-head attention_: $4 d^{2}$ parameters (assuming $d_{k} = d_{v} = d/H$).
-> * _Position-wise feedforward_: $\mathbf{W}_{1}$ contributes $d_{ff}\,d = 4 d^{2}$ parameters and $\mathbf{W}_{2}$ contributes $d\,d_{ff} = 4 d^{2}$ parameters, for a total of $8 d^{2}$ feedforward weight parameters. Biases add $d_{ff} + d = 5d$.
+> * _Position-wise feedforward_: $\mathbf{W}_{1}$ contributes $d\,d_{ff} = 4 d^{2}$ parameters and $\mathbf{W}_{2}$ contributes $d_{ff}\,d = 4 d^{2}$ parameters, for a total of $8 d^{2}$ feedforward weight parameters. Biases add $d_{ff} + d = 5d$.
 > * _LayerNorms_: two layer norms with $2d$ learnable parameters each, for $4d$ total.
 >
 > Ignoring the linear-in-$d$ bias and norm terms, the dominant parameter cost is:
@@ -265,8 +269,8 @@ Transformers, LSTMs, and Elman RNNs solve the same problem, mapping a sequence o
 > |---|---|---|---|
 > | Sequential processing required | Yes | Yes | No |
 > | Parameter count (dominant term) | $h^{2}$ | $4 h^{2}$ | $12 d^{2}$ |
-> | Long-range dependencies | Vanish | Mitigated by cell state | Direct (every position attends to every other) |
-> | Computation per layer | $\mathcal{O}(T h^{2})$ | $\mathcal{O}(T h^{2})$ | $\mathcal{O}(n^{2} d + n d^{2})$ |
+> | Long-range dependencies | Difficult (vanishing gradients) | Mitigated by cell state | Direct (every position attends to every other) |
+> | Computation per layer | $\mathcal{O}(n h^{2})$ | $\mathcal{O}(n h^{2})$ | $\mathcal{O}(n^{2} d + n d^{2})$ |
 > | Time-step parallelism | None | None | Full |
 > | Order encoded by | Recurrence | Recurrence | Positional encoding |
 
@@ -274,7 +278,7 @@ Two trade-offs stand out.
 
 > __Trade-offs__
 >
-> * __Compute scales differently with sequence length:__ Recurrent models do $\mathcal{O}(T)$ sequential steps and $\mathcal{O}(h^{2})$ work per step, so total work is $\mathcal{O}(T h^{2})$, but the wall-clock time is bottlenecked by the sequential dependency. The transformer block does $\mathcal{O}(n^{2} d)$ work for the attention matrix and $\mathcal{O}(n d^{2})$ work for the projections and FFN, all of which can be parallelized across positions. For long sequences, the $n^{2}$ attention term dominates and becomes the principal scaling concern.
+> * __Compute scales differently with sequence length:__ Recurrent models do $\mathcal{O}(n)$ sequential steps and $\mathcal{O}(h^{2})$ work per step, so total work is $\mathcal{O}(n h^{2})$, but the wall-clock time is bottlenecked by the sequential dependency. The transformer block does $\mathcal{O}(n^{2} d)$ work for the attention matrix and $\mathcal{O}(n d^{2})$ work for the projections and FFN, all of which can be parallelized across positions. For long sequences, the $n^{2}$ attention term dominates and becomes the principal scaling concern.
 > * __Parameter count vs. effective context:__ Transformers use approximately $12 d^{2}$ parameters per block compared to $4 h^{2}$ for an LSTM. With matched dimensions ($d = h$), a transformer block has roughly $3\times$ the parameters of an LSTM. The extra parameters buy direct attention over the entire sequence and position-wise nonlinear processing, which is what makes deep transformer stacks effective at modeling long-range dependencies.
 
 ___

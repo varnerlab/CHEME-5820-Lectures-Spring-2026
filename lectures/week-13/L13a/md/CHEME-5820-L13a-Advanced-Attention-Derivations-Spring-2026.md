@@ -1,14 +1,17 @@
 # L13a Advanced: Two Derivations for Self-Attention
 This advanced companion notebook works out two short derivations that the [L13a lecture](CHEME-5820-L13a-Lecture-Spring-2026.ipynb) referenced but did not prove. Both are short and self-contained, and together they give a rigorous answer to two questions students often ask when they first see scaled dot-product attention:
 
+__Underlying Questions:__
 1. _Why divide by $\sqrt{d_{k}}$ inside the softmax?_ We show that the scaling factor follows from a one-line variance computation, and that without it the softmax saturates as the key dimension grows.
 2. _Why does self-attention need positional encodings?_ We prove that self-attention is permutation equivariant: shuffling the input rows produces the same shuffled output, with no change to any row's content. So the layer cannot distinguish between sentences with different word order, and we need to break that symmetry by adding position information to the input.
+
+These results are fundamental to understanding how self-attention works. We will also verify both results empirically with small Julia experiments.
 
 > __Learning Objectives:__
 >
 > By the end of this notebook, you should be able to:
 >
-> * __Derive the $1/\sqrt{d_{k}}$ scaling factor from a variance argument:__ Show that for independent zero-mean unit-variance entries, the dot product $\mathbf{q}\cdot\mathbf{k}$ has variance $d_{k}$, and explain why this leads to softmax saturation that the scaling factor fixes.
+> * __Derive the $1/\sqrt{d_{k}}$ scaling factor from a variance argument:__ Show that for independent zero-mean unit-variance entries, the dot product $\langle\mathbf{q},\mathbf{k}\rangle$ has variance $d_{k}$, and explain why this leads to softmax saturation that the scaling factor fixes.
 > * __Prove that self-attention is permutation equivariant:__ For any permutation matrix $\mathbf{P}$, show that $\operatorname{Attention}(\mathbf{P}\mathbf{X}) = \mathbf{P}\,\operatorname{Attention}(\mathbf{X})$, and identify the step in the proof that uses the row-wise structure of softmax.
 > * __Verify both results empirically in code:__ Write a small Julia experiment that measures the variance of unscaled and scaled dot products as a function of $d_{k}$, and a separate experiment that confirms self-attention output rows shuffle exactly when the input rows are permuted.
 
@@ -28,59 +31,67 @@ Random.seed!(42);
 
 
 ## Derivation 1: The $1/\sqrt{d_{k}}$ Scaling Factor
-The scaled dot-product attention equation is
+The scaled dot-product attention equation is given by:
 $$
 \operatorname{Attention}(\mathbf{Q},\mathbf{K},\mathbf{V}) = \operatorname{softmax}\!\left(\frac{\mathbf{Q}\mathbf{K}^{\top}}{\sqrt{d_{k}}}\right)\mathbf{V}.
 $$
-The factor of $1/\sqrt{d_{k}}$ inside the softmax is not arbitrary; it comes from a short statistical argument about the variance of a dot product of two random vectors.
+The factor of $1/\sqrt{d_{k}}$ inside the softmax is not arbitrary. It comes from a short statistical argument about the variance of a dot product of two random vectors.
 
 ### The Variance Computation
 
 > __Variance of a dot product__
 >
-> Let $\mathbf{q}, \mathbf{k}\in\mathbb{R}^{d_{k}}$ be two random vectors whose entries are independent random variables satisfying:
-> * $\mathbb{E}[q_{i}] = \mathbb{E}[k_{i}] = 0$ for all $i = 1, 2, \ldots, d_{k}$
-> * $\operatorname{Var}(q_{i}) = \operatorname{Var}(k_{i}) = 1$ for all $i = 1, 2, \ldots, d_{k}$
+> Let $\mathbf{q}, \mathbf{k}\in\mathbb{R}^{d_{k}}$ be two random vectors whose entries are independent random variables satisfying the following conditions:
+> * $\mathbb{E}[q_{i}] = \mathbb{E}[k_{i}] = 0$ for all $i = 1, 2, \ldots, d_{k}$ (zero mean)
+> * $\operatorname{Var}(q_{i}) = \operatorname{Var}(k_{i}) = 1$ for all $i = 1, 2, \ldots, d_{k}$ (unit variance)
 > * $q_{i}$ and $k_{j}$ are independent for all $i$ and $j$
 >
-> Then the dot product $\mathbf{q}\cdot\mathbf{k} = \sum_{i=1}^{d_{k}} q_{i} k_{i}$ has mean zero and variance $d_{k}$.
+> Then the dot product $\langle\mathbf{q},\mathbf{k}\rangle = \sum_{i=1}^{d_{k}} q_{i} k_{i}$ has mean zero and variance $d_{k}$.
 
-The proof is two lines.
+We prove this in two steps.
 
 > __Proof.__
 >
-> _Mean:_ By linearity of expectation,
+> _Mean:_ By linearity of expectation, the mean of the dot product is given by:
 > $$
-\mathbb{E}[\mathbf{q}\cdot\mathbf{k}] = \mathbb{E}\!\left[\sum_{i=1}^{d_{k}} q_{i} k_{i}\right] = \sum_{i=1}^{d_{k}} \mathbb{E}[q_{i} k_{i}] = \sum_{i=1}^{d_{k}} \mathbb{E}[q_{i}]\,\mathbb{E}[k_{i}] = 0,
+\mathbb{E}[\langle\mathbf{q},\mathbf{k}\rangle] = \mathbb{E}\!\left[\sum_{i=1}^{d_{k}} q_{i} k_{i}\right] = \sum_{i=1}^{d_{k}} \mathbb{E}[q_{i} k_{i}].
 > $$
-> where the third equality uses independence of $q_{i}$ and $k_{i}$.
+> In general, $\mathbb{E}[q_{i} k_{i}] \neq \mathbb{E}[q_{i}]\,\mathbb{E}[k_{i}]$ for arbitrary random variables. However, because we assumed $q_{i}$ and $k_{i}$ are independent, the expectation of the product factors as $\mathbb{E}[q_{i} k_{i}] = \mathbb{E}[q_{i}]\,\mathbb{E}[k_{i}] = 0 \cdot 0 = 0$ for each $i$. Therefore:
+> $$
+\mathbb{E}[\langle\mathbf{q},\mathbf{k}\rangle] = \sum_{i=1}^{d_{k}} 0 = 0.
+> $$
 >
-> _Variance:_ Because the products $q_{i} k_{i}$ for $i = 1, 2, \ldots, d_{k}$ are mutually independent (each pair $(q_{i}, k_{i})$ involves different underlying variables), the variance of the sum is the sum of the variances:
+> _Variance:_ Because the products $q_{i} k_{i}$ for $i = 1, 2, \ldots, d_{k}$ are mutually independent (each pair $(q_{i}, k_{i})$ involves different underlying random variables), the variance of the sum equals the sum of the variances:
 > $$
-\operatorname{Var}(\mathbf{q}\cdot\mathbf{k}) = \sum_{i=1}^{d_{k}} \operatorname{Var}(q_{i} k_{i}).
+\operatorname{Var}(\langle\mathbf{q},\mathbf{k}\rangle) = \sum_{i=1}^{d_{k}} \operatorname{Var}(q_{i} k_{i}).
 > $$
-> For each term, using $\mathbb{E}[q_{i} k_{i}] = 0$:
+> We compute each term using the definition $\operatorname{Var}(Z) = \mathbb{E}[Z^{2}] - (\mathbb{E}[Z])^{2}$. From the mean calculation above, we already know $\mathbb{E}[q_{i} k_{i}] = 0$, so the second term vanishes and we get:
 > $$
-\operatorname{Var}(q_{i} k_{i}) = \mathbb{E}[(q_{i} k_{i})^{2}] - \mathbb{E}[q_{i} k_{i}]^{2} = \mathbb{E}[q_{i}^{2}]\,\mathbb{E}[k_{i}^{2}] = \operatorname{Var}(q_{i})\,\operatorname{Var}(k_{i}) = 1\cdot 1 = 1,
+\operatorname{Var}(q_{i} k_{i}) = \mathbb{E}[(q_{i} k_{i})^{2}] - 0^{2} = \mathbb{E}[q_{i}^{2}\, k_{i}^{2}].
 > $$
-> where the second equality uses independence of $q_{i}$ and $k_{i}$ and the third uses $\mathbb{E}[q_{i}] = 0$ to identify $\mathbb{E}[q_{i}^{2}] = \operatorname{Var}(q_{i})$.
->
-> Substituting back gives $\operatorname{Var}(\mathbf{q}\cdot\mathbf{k}) = \sum_{i=1}^{d_{k}} 1 = d_{k}\quad\blacksquare$
+> Again, we use the independence of $q_{i}$ and $k_{i}$ to factor the expectation of the product:
+> $$
+\mathbb{E}[q_{i}^{2}\, k_{i}^{2}] = \mathbb{E}[q_{i}^{2}]\,\mathbb{E}[k_{i}^{2}].
+> $$
+> Finally, since $\mathbb{E}[q_{i}] = 0$, we can identify $\mathbb{E}[q_{i}^{2}] = \operatorname{Var}(q_{i}) + (\mathbb{E}[q_{i}])^{2} = \operatorname{Var}(q_{i}) = 1$ (and similarly $\mathbb{E}[k_{i}^{2}] = \operatorname{Var}(k_{i}) = 1$). Substituting back gives:
+> $$
+\operatorname{Var}(\langle\mathbf{q},\mathbf{k}\rangle) = \sum_{i=1}^{d_{k}} 1 \cdot 1 = d_{k}\quad\blacksquare
+> $$
 
 ### Why This Variance Hurts the Softmax
 
-The dot product has standard deviation $\sqrt{d_{k}}$, so for a typical query and key it takes values on the order of $\sqrt{d_{k}}$. As $d_{k}$ grows, the entries fed into the softmax also grow.
+The dot product has standard deviation $\sqrt{d_{k}}$, so for a typical query-key pair the scores take values on the order of $\pm\sqrt{d_{k}}$. As $d_{k}$ grows, the entries fed into the softmax grow as well.
 
 The softmax function is _scale-sensitive_: doubling its input vector sharpens the output distribution, and quadrupling it sharpens it further. In the limit where one input is much larger than the others, the softmax assigns weight one to that entry and zero to all others. At that point the gradient of softmax through every entry is nearly zero, which makes the layer untrainable.
 
-> __The fix.__ Dividing by $\sqrt{d_{k}}$ rescales the dot product to have variance one, independent of $d_{k}$:
+> __The fix.__ Dividing by $\sqrt{d_{k}}$ rescales the dot product to have unit variance, independent of $d_{k}$:
 > $$
-\operatorname{Var}\!\left(\frac{\mathbf{q}\cdot\mathbf{k}}{\sqrt{d_{k}}}\right) = \frac{1}{d_{k}}\,\operatorname{Var}(\mathbf{q}\cdot\mathbf{k}) = \frac{1}{d_{k}}\cdot d_{k} = 1.
+\operatorname{Var}\!\left(\frac{\langle\mathbf{q},\mathbf{k}\rangle}{\sqrt{d_{k}}}\right) = \frac{1}{d_{k}}\,\operatorname{Var}(\langle\mathbf{q},\mathbf{k}\rangle) = \frac{1}{d_{k}}\cdot d_{k} = 1.
 > $$
 > The softmax inputs now have a fixed scale regardless of how wide the model gets, so the softmax is neither saturated nor flat, and gradients flow through it normally.
 
 ### Empirical Verification: Variance Grows with $d_{k}$
-Let's confirm the variance computation numerically. For each value of $d_{k}$ in a sweep, we sample many independent pairs $(\mathbf{q}, \mathbf{k})$ from the standard normal distribution, compute the unscaled dot product $\mathbf{q}\cdot\mathbf{k}$ and the scaled dot product $\mathbf{q}\cdot\mathbf{k}/\sqrt{d_{k}}$, and compare their sample variances against the predictions $d_{k}$ and $1$.
+Let's confirm the variance computation numerically. For each value of $d_{k}$ in a sweep, we sample many independent pairs $(\mathbf{q}, \mathbf{k})$ from the standard normal distribution, compute the unscaled dot product $\langle\mathbf{q},\mathbf{k}\rangle$ and the scaled dot product $\langle\mathbf{q},\mathbf{k}\rangle/\sqrt{d_{k}}$, and compare their sample variances against the theoretical predictions of $d_{k}$ and $1$.
 
 
 ```julia
@@ -108,10 +119,10 @@ pretty_table(results)
     └───────┴─────────┴────────────┘
 
 
-The unscaled variance tracks $d_{k}$ exactly, and the scaled variance stays close to $1$ no matter how large $d_{k}$ becomes. This is the variance computation you just read, performed empirically.
+The unscaled variance tracks $d_{k}$ closely, and the scaled variance stays near $1$ regardless of how large $d_{k}$ becomes. This confirms the variance computation above empirically.
 
 ### Empirical Verification: Softmax Saturation
-Now let's see what happens to the softmax when we feed it unscaled vs. scaled dot products. We pick one query $\mathbf{q}$ and a small set of $n_{\text{keys}} = 8$ keys, compute the scores both ways, and report the maximum softmax weight (a value close to $1$ means the softmax has saturated and assigns almost all of its mass to a single key).
+Now let's see what happens to the softmax when we feed it unscaled vs. scaled dot products. We pick one query $\mathbf{q}$ and a small set of $n_{\text{keys}} = 8$ keys, compute the scores both ways, and report the maximum softmax weight. A value close to $1$ means the softmax has saturated and assigns almost all of its mass to a single key.
 
 
 ```julia
@@ -151,15 +162,15 @@ ___
 The lecture claimed that self-attention is _permutation equivariant_: if you shuffle the rows of the input, the rows of the output are shuffled in the same way, but no row's contents change. We now prove this rigorously.
 
 ### Setup and Statement
-Let $\mathbf{X}\in\mathbb{R}^{n\times d}$ be a matrix of token embeddings (one row per token), and let
+Let $\mathbf{X}\in\mathbb{R}^{n\times d}$ be a matrix of token embeddings (one row per token), and let the self-attention output be given by:
 $$
 \operatorname{Attention}(\mathbf{X}) = \operatorname{softmax}\!\left(\frac{\mathbf{X}\mathbf{W}_{Q}(\mathbf{X}\mathbf{W}_{K})^{\top}}{\sqrt{d_{k}}}\right)\mathbf{X}\mathbf{W}_{V}
 $$
-denote the self-attention output, where $\mathbf{W}_{Q}, \mathbf{W}_{K}\in\mathbb{R}^{d\times d_{k}}$ and $\mathbf{W}_{V}\in\mathbb{R}^{d\times d_{v}}$ are the learned projection matrices. The softmax is applied row-wise.
+where $\mathbf{W}_{Q}, \mathbf{W}_{K}\in\mathbb{R}^{d\times d_{k}}$ and $\mathbf{W}_{V}\in\mathbb{R}^{d\times d_{v}}$ are the learned projection matrices, and the softmax is applied row-wise.
 
 > __Theorem (Permutation Equivariance of Self-Attention).__
 >
-> Let $\mathbf{P}\in\mathbb{R}^{n\times n}$ be a permutation matrix (so $\mathbf{P}\mathbf{P}^{\top} = \mathbf{P}^{\top}\mathbf{P} = \mathbf{I}_{n}$ and exactly one entry of each row and column is $1$). Then
+> Let $\mathbf{P}\in\mathbb{R}^{n\times n}$ be a permutation matrix satisfying $\mathbf{P}\mathbf{P}^{\top} = \mathbf{P}^{\top}\mathbf{P} = \mathbf{I}_{n}$, with exactly one entry of each row and column equal to $1$. Then:
 > $$
 \boxed{
 \operatorname{Attention}(\mathbf{P}\mathbf{X}) = \mathbf{P}\,\operatorname{Attention}(\mathbf{X}).
@@ -171,13 +182,14 @@ The proof tracks how each piece of the attention computation transforms when the
 > __Proof.__
 >
 > _Step 1: Q, K, V transform as left-multiplication by $\mathbf{P}$._
+> When we replace $\mathbf{X}$ with $\mathbf{P}\mathbf{X}$, the permuted queries are given by:
 > $$
 \mathbf{Q}_{\mathbf{P}} = (\mathbf{P}\mathbf{X})\mathbf{W}_{Q} = \mathbf{P}(\mathbf{X}\mathbf{W}_{Q}) = \mathbf{P}\mathbf{Q},
 > $$
-> using associativity of matrix multiplication. By the same argument, $\mathbf{K}_{\mathbf{P}} = \mathbf{P}\mathbf{K}$ and $\mathbf{V}_{\mathbf{P}} = \mathbf{P}\mathbf{V}$.
+> where the second equality uses associativity of matrix multiplication. By the same argument, $\mathbf{K}_{\mathbf{P}} = \mathbf{P}\mathbf{K}$ and $\mathbf{V}_{\mathbf{P}} = \mathbf{P}\mathbf{V}$.
 >
 > _Step 2: The scaled score matrix transforms as $\mathbf{P} \mathbf{S}\mathbf{P}^{\top}$._
-> Let $\mathbf{S} = \mathbf{Q}\mathbf{K}^{\top}/\sqrt{d_{k}}$ be the scaled scores from the original input. Then
+> Let $\mathbf{S} = \mathbf{Q}\mathbf{K}^{\top}/\sqrt{d_{k}}$ be the scaled scores from the original input. Then the permuted scores are given by:
 > $$
 \begin{align*}
 \mathbf{S}_{\mathbf{P}} &= \frac{\mathbf{Q}_{\mathbf{P}}\mathbf{K}_{\mathbf{P}}^{\top}}{\sqrt{d_{k}}} \\
@@ -189,22 +201,22 @@ The proof tracks how each piece of the attention computation transforms when the
 > where the third equality uses $(\mathbf{P}\mathbf{K})^{\top} = \mathbf{K}^{\top}\mathbf{P}^{\top}$.
 >
 > _Step 3: Row-wise softmax commutes with the conjugation $\mathbf{S}\mapsto\mathbf{P}\mathbf{S}\mathbf{P}^{\top}$._
-> Let $\sigma$ denote the permutation of $\{1, \ldots, n\}$ corresponding to $\mathbf{P}$, so that $(\mathbf{P}\mathbf{A})_{i j} = \mathbf{A}_{\sigma^{-1}(i), j}$ and $(\mathbf{A}\mathbf{P}^{\top})_{i j} = \mathbf{A}_{i, \sigma^{-1}(j)}$ for any compatible matrix $\mathbf{A}$. Combining these,
+> Let $\sigma$ denote the permutation of $\{1, \ldots, n\}$ corresponding to $\mathbf{P}$, so that $(\mathbf{P}\mathbf{A})_{i j} = \mathbf{A}_{\sigma^{-1}(i), j}$ and $(\mathbf{A}\mathbf{P}^{\top})_{i j} = \mathbf{A}_{i, \sigma^{-1}(j)}$ for any compatible matrix $\mathbf{A}$. Combining these, entry $(i,j)$ of the conjugated score matrix is:
 > $$
 (\mathbf{P}\mathbf{S}\mathbf{P}^{\top})_{i j} = \mathbf{S}_{\sigma^{-1}(i),\,\sigma^{-1}(j)}.
 > $$
-> Now apply softmax row-wise. Row $i$ of $\mathbf{P}\mathbf{S}\mathbf{P}^{\top}$ is row $\sigma^{-1}(i)$ of $\mathbf{S}$ with its entries reordered according to $\sigma^{-1}$. Because softmax is _equivariant under permutations of its input_, the softmax of a permuted vector is the same permutation of the softmax of the original vector:
+> Now apply softmax row-wise. Row $i$ of $\mathbf{P}\mathbf{S}\mathbf{P}^{\top}$ is row $\sigma^{-1}(i)$ of $\mathbf{S}$ with its entries reordered according to $\sigma^{-1}$. Because softmax is _equivariant under permutations of its input_ (the softmax of a permuted vector is the same permutation of the softmax of the original vector), we have:
 > $$
 \operatorname{softmax}(\mathbf{u})_{\pi(j)} = \operatorname{softmax}(\pi\cdot\mathbf{u})_{j}\quad\text{for any permutation }\pi.
 > $$
-> Applying this within each row gives
+> Applying this within each row gives:
 > $$
 \operatorname{softmax}(\mathbf{P}\mathbf{S}\mathbf{P}^{\top})_{i j} = \operatorname{softmax}(\mathbf{S})_{\sigma^{-1}(i),\,\sigma^{-1}(j)} = (\mathbf{P}\,\operatorname{softmax}(\mathbf{S})\,\mathbf{P}^{\top})_{i j}.
 > $$
 > So $\operatorname{softmax}(\mathbf{P}\mathbf{S}\mathbf{P}^{\top}) = \mathbf{P}\,\operatorname{softmax}(\mathbf{S})\,\mathbf{P}^{\top}$. This is the only step in the proof that uses anything specific about softmax; the rest is pure linear algebra.
 >
 > _Step 4: Combine to recover $\mathbf{P}\,\operatorname{Attention}(\mathbf{X})$._
-> Let $\mathbf{A} = \operatorname{softmax}(\mathbf{S})$ denote the original attention weights. Then
+> Let $\mathbf{A} = \operatorname{softmax}(\mathbf{S})$ denote the original attention weights. Combining the results from Steps 1-3, the full permuted attention output is:
 > $$
 \begin{align*}
 \operatorname{Attention}(\mathbf{P}\mathbf{X}) &= \operatorname{softmax}(\mathbf{S}_{\mathbf{P}})\,\mathbf{V}_{\mathbf{P}} \\
@@ -214,12 +226,12 @@ The proof tracks how each piece of the attention computation transforms when the
 &= \mathbf{P}\,\operatorname{Attention}(\mathbf{X}),
 \end{align*}
 > $$
-> using $\mathbf{P}^{\top}\mathbf{P} = \mathbf{I}_{n}$ in the third line. This is the desired identity. $\quad\blacksquare$
+> where the third line uses $\mathbf{P}^{\top}\mathbf{P} = \mathbf{I}_{n}$. This is the desired identity. $\quad\blacksquare$
 
 > __Why this matters.__ The theorem says that self-attention has _no internal mechanism_ for distinguishing the order of its input rows. The sentence "the cat sat on the mat" and any of its $6! = 720$ permutations produce the same set of output rows in different orders. Self-attention treats its input as a set, not a sequence. To recover sequence semantics, we have to break this symmetry by adding _positional encodings_ to the input embeddings before they enter the attention layer. After position information is added, the rows of $\mathbf{X}$ are no longer interchangeable, the proof above no longer applies, and the layer can finally tell word order from word identity.
 
 ### Empirical Verification: Self-Attention Output Permutes with Input
-Let's check the theorem in code. We instantiate a small self-attention layer, run it on a random input, then permute the input rows and confirm that the output rows are shuffled exactly the same way (without any of their entries changing).
+Let's verify the theorem in code. We instantiate a small self-attention layer, run it on a random input, then permute the input rows and confirm that the output rows are shuffled in exactly the same way, with no change to any row's contents.
 
 
 ```julia
@@ -292,7 +304,7 @@ Both derivations are short, but they answer questions that show up the moment yo
 
 > __Key Takeaways:__
 >
-> * **The $1/\sqrt{d_{k}}$ scaling has a one-line variance derivation.** Independent zero-mean unit-variance entries make $\mathbf{q}\cdot\mathbf{k}$ a sum of $d_{k}$ independent unit-variance random variables, so it has variance $d_{k}$. Dividing by $\sqrt{d_{k}}$ rescales the variance to $1$ and prevents the softmax from saturating as the model dimension grows.
+> * **The $1/\sqrt{d_{k}}$ scaling has a one-line variance derivation.** Independent zero-mean unit-variance entries make $\langle\mathbf{q},\mathbf{k}\rangle$ a sum of $d_{k}$ independent unit-variance random variables, so it has variance $d_{k}$. Dividing by $\sqrt{d_{k}}$ rescales the variance to $1$ and prevents the softmax from saturating as the model dimension grows.
 > * **Self-attention is permutation equivariant by direct computation.** The proof tracks how $\mathbf{Q}$, $\mathbf{K}$, $\mathbf{V}$, and the softmax matrix transform when the input is left-multiplied by a permutation matrix $\mathbf{P}$, and uses $\mathbf{P}^{\top}\mathbf{P} = \mathbf{I}$ to recover $\mathbf{P}\,\operatorname{Attention}(\mathbf{X})$. Only the row-wise softmax step uses anything specific about the activation function.
 > * **Positional encoding is the symmetry-breaking step.** Without it, self-attention treats its input rows as a set and cannot distinguish word order. Adding a position-dependent vector to each row breaks the row-interchangeability assumption used in the proof, which is why every transformer for sequence modeling includes positional information of some kind.
 
