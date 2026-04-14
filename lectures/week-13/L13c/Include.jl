@@ -27,6 +27,9 @@ using Plots
 using JLD2
 using StatsBase
 
+# set the random seed for reproducibility -
+Random.seed!(42);
+
 # load local source files -
 isfile(joinpath(_PATH_TO_SRC, "Shakespeare.jl"))     && include(joinpath(_PATH_TO_SRC, "Shakespeare.jl"));
 isfile(joinpath(_PATH_TO_SRC, "CausalAttention.jl")) && include(joinpath(_PATH_TO_SRC, "CausalAttention.jl"));
