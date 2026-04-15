@@ -25,7 +25,9 @@
       "Bash(identify /tmp/tb-c2-hires-1.png)",
       "Bash(convert /tmp/tb-c2-hires-1.png -crop 2400x1200+900+2700 /tmp/tb-zoom-fanout.png)",
       "Bash(convert /tmp/tb-c2-hires-1.png -crop 2000x1000+1000+1500 /tmp/tb-zoom-attn-add.png)",
-      "Bash(convert /tmp/tb-c2-hires-1.png -crop 1500x2000+2800+800 /tmp/tb-zoom-residuals.png)"
+      "Bash(convert /tmp/tb-c2-hires-1.png -crop 1500x2000+2800+800 /tmp/tb-zoom-residuals.png)",
+      "Bash(jq -r '.cells | to_entries[] | \"=== CELL \\\\\\(.key\\) [\\\\\\(.value.cell_type\\)] ===\\\\n\\\\\\(.value.source | join\\(\"\"\\)\\)\"' \"/Users/jeffreyvarner/Desktop/julia_work/CHEME-5820-instances/Spring-2026/CHEME-5820-Lectures-Spring-2026/lectures/week-13/L13c/CHEME-5820-L13c-Example-NanoGPT-Shakespeare-Spring-2026.ipynb\")",
+      "Read(//tmp/**)"
     ]
   }
 }
