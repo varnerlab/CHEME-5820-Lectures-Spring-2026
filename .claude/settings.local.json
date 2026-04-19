@@ -30,7 +30,8 @@
       "Read(//tmp/**)",
       "Bash(pdflatex -interaction=nonstopmode Fig-Transformer-Block.tex)",
       "Read(//private/tmp/**)",
-      "Bash(cp *)"
+      "Bash(cp *)",
+      "Skill(review-notebook)"
     ]
   }
 }
