@@ -5,91 +5,118 @@
 
 \begin{document}
 \begin{tikzpicture}[
-    block/.style     = {rectangle, draw=gray!60, thick, rounded corners=5pt,
-                        minimum height=1.4cm, minimum width=2.2cm,
-                        font=\small, inner sep=6pt, align=center},
-    smallblock/.style = {rectangle, draw=gray!55, thick, rounded corners=4pt,
-                        minimum height=1.1cm, minimum width=1.8cm,
-                        font=\footnotesize, inner sep=4pt, align=center},
-    sig/.style       = {rectangle, draw=blue!40, thick, rounded corners=5pt,
-                        fill=blue!8, minimum height=1.2cm, minimum width=2.0cm,
-                        font=\small, inner sep=6pt, align=center},
-    outsig/.style    = {rectangle, draw=teal!45, thick, rounded corners=5pt,
-                        fill=teal!10, minimum height=1.2cm, minimum width=2.0cm,
-                        font=\small, inner sep=6pt, align=center},
-    state/.style     = {rectangle, draw=orange!55, thick, rounded corners=5pt,
-                        fill=orange!12, minimum height=1.2cm, minimum width=2.0cm,
-                        font=\small, inner sep=6pt, align=center},
-    conn/.style      = {line width=1.0pt, draw=black!55,
-                        -{Stealth[length=6pt, width=5pt]}},
-    fbconn/.style    = {line width=1.0pt, draw=black!45, dashed,
-                        -{Stealth[length=6pt, width=5pt]}},
-    plus/.style      = {circle, draw=gray!55, thick, fill=gray!6,
-                        minimum size=0.7cm, font=\small, inner sep=0pt},
-    lbl/.style       = {font=\footnotesize, text=black!55, align=center},
+    mainblock/.style  = {rectangle, draw=gray!55, thick, rounded corners=5pt,
+                         minimum height=1.25cm, minimum width=2.15cm,
+                         font=\small, inner sep=6pt, align=center},
+    inblock/.style    = {mainblock, fill=blue!8,   draw=blue!40},
+    outblock/.style   = {mainblock, fill=teal!10,  draw=teal!45},
+    opblock/.style    = {mainblock, fill=orange!12, draw=orange!55},
+    matblock/.style   = {rectangle, draw=gray!55, thick, rounded corners=4pt,
+                         minimum height=1.05cm, minimum width=1.7cm,
+                         font=\footnotesize, inner sep=4pt, align=center},
+    matB/.style       = {matblock, fill=blue!8,    draw=blue!40},
+    matC/.style       = {matblock, fill=orange!12, draw=orange!55},
+    matA/.style       = {matblock, fill=orange!12, draw=orange!55},
+    matD/.style       = {matblock, fill=blue!8,    draw=blue!40},
+    delay/.style      = {matblock, fill=gray!12,   draw=gray!60},
+    conn/.style       = {line width=1.0pt, draw=black!55,
+                         -{Stealth[length=6pt, width=5pt]}},
+    fbconn/.style     = {line width=1.0pt, draw=black!50, dashed,
+                         -{Stealth[length=6pt, width=5pt]}},
+    skipconn/.style   = {line width=1.0pt, draw=black!45, dotted,
+                         -{Stealth[length=6pt, width=5pt]}},
+    plus/.style       = {circle, draw=gray!55, thick, fill=gray!6,
+                         minimum size=0.72cm, font=\small, inner sep=0pt},
+    annot/.style      = {font=\small, text=black!50, align=center},
+    eqnlbl/.style     = {font=\small, text=black!75, align=center},
+    titlelbl/.style   = {font=\small\bfseries, text=black!80, align=center},
+    tinytap/.style    = {circle, fill=black!55, inner sep=0pt, minimum size=4.5pt},
 ]
 
 %% ============================================================
-%% LAYOUT (horizontal flow, left to right)
+%% COORDINATES
 %% ============================================================
+\def\xU{0}
+\def\xB{2.7}
+\def\xSa{4.8}
+\def\xX{6.9}
+\def\xC{9.5}
+\def\xSb{11.6}
+\def\xY{13.9}
 
-\node[sig]        (u)     at (0,   0)   {\textbf{Input}\\[1pt]$u_{t}\in\mathbb{R}$};
-\node[smallblock, fill=blue!8, draw=blue!40]
-                  (Bbar)  at (3.0, 0)   {\textbf{$\bar{\mathbf{B}}$}\\[1pt]\footnotesize $h\times 1$};
-\node[plus]       (sum1)  at (5.3, 0)   {$+$};
-\node[state]      (delay) at (7.6, 0)   {\textbf{State update}\\[1pt]$\mathbf{x}_{t}\in\mathbb{R}^{h}$};
-\node[smallblock, fill=orange!10, draw=orange!55]
-                  (Cbar)  at (10.4, 0)  {\textbf{$\bar{\mathbf{C}}$}\\[1pt]\footnotesize $1\times h$};
-\node[plus]       (sum2)  at (12.7, 0)  {$+$};
-\node[outsig]     (y)     at (15.0, 0)  {\textbf{Output}\\[1pt]$y_{t}\in\mathbb{R}$};
+\def\xMid{6.95}
 
-%% feedback block (Abar) below delay
-\node[smallblock, fill=orange!10, draw=orange!55]
-                  (Abar)  at (7.6, -3.0) {\textbf{$\bar{\mathbf{A}}$}\\[1pt]\footnotesize $h\times h$};
-
-%% feedforward block (Dbar) below the main path
-\node[smallblock, fill=blue!8, draw=blue!40]
-                  (Dbar)  at (8.3, -1.6) {\textbf{$\bar{\mathbf{D}}$}};
+\def\yMain{0}
+\def\ySkip{2.4}
+\def\yFb{-2.4}
+\def\yTitle{4.2}
+\def\yCaption{-4.3}
 
 %% ============================================================
-%% CONNECTIONS
+%% MAIN-PATH NODES
 %% ============================================================
+\node[inblock]  (u)  at (\xU,  \yMain) {\textbf{Input}\\[1pt]$u_{t}\in\mathbb{R}$};
+\node[matB]     (B)  at (\xB,  \yMain) {$\bar{\mathbf{B}}$\\[1pt]\footnotesize $h\times 1$};
+\node[plus]     (s1) at (\xSa, \yMain) {$+$};
+\node[opblock]  (x)  at (\xX,  \yMain) {\textbf{State}\\[1pt]$\mathbf{x}_{t}\in\mathbb{R}^{h}$};
+\node[matC]     (C)  at (\xC,  \yMain) {$\bar{\mathbf{C}}$\\[1pt]\footnotesize $1\times h$};
+\node[plus]     (s2) at (\xSb, \yMain) {$+$};
+\node[outblock] (y)  at (\xY,  \yMain) {\textbf{Output}\\[1pt]$y_{t}\in\mathbb{R}$};
 
-%% main forward path
-\draw[conn] (u.east)     -- (Bbar.west);
-\draw[conn] (Bbar.east)  -- (sum1.west);
-\draw[conn] (sum1.east)  -- (delay.west);
-\draw[conn] (delay.east) -- (Cbar.west);
-\draw[conn] (Cbar.east)  -- (sum2.west);
-\draw[conn] (sum2.east)  -- (y.west);
+%% skip row (feedforward)
+\node[matD]     (D)  at (\xMid, \ySkip)
+    {$\bar{\mathbf{D}}$\\[1pt]\footnotesize $1\times 1$};
 
-%% feedback x_t -> Abar -> sum1 (dashed)
-\draw[fbconn] (delay.south) |- (Abar.east);
-\draw[fbconn] (Abar.west) -| (sum1.south);
-
-%% feedthrough u -> Dbar -> sum2
-\coordinate (uTap) at (1.5, 0);
-\draw[conn] (uTap) |- (Dbar.west);
-\draw[conn] (Dbar.east) -| (sum2.south);
+%% feedback row
+\node[delay]    (z)  at (\xX,  \yFb) {$z^{-1}$\\[1pt]\footnotesize delay};
+\node[matA]     (A)  at (\xSa, \yFb) {$\bar{\mathbf{A}}$\\[1pt]\footnotesize $h\times h$};
 
 %% ============================================================
-%% ANNOTATIONS
+%% MAIN-PATH CONNECTIONS
 %% ============================================================
+\draw[conn] (u.east)  -- (B.west);
+\draw[conn] (B.east)  -- (s1.west);
+\draw[conn] (s1.east) -- (x.west);
+\draw[conn] (x.east)  -- (C.west);
+\draw[conn] (C.east)  -- (s2.west);
+\draw[conn] (s2.east) -- (y.west);
 
-\node[lbl] at (5.3,  0.9)  {$\mathbf{x}_{t} = \bar{\mathbf{A}}\mathbf{x}_{t-1} + \bar{\mathbf{B}}u_{t}$};
-\node[lbl] at (12.7, 0.9)  {$y_{t} = \bar{\mathbf{C}}\mathbf{x}_{t} + \bar{\mathbf{D}}u_{t}$};
-\node[lbl, text=black!45] at (7.6, -4.0) {feedback: hidden-state recursion};
-\node[lbl, text=black!45] at (8.3, -2.5) {feedforward (skip, often $\bar{\mathbf{D}}=0$)};
+%% ============================================================
+%% SKIP PATH (u -> D -> s2)
+%% ============================================================
+\coordinate (uTap) at ($(u.east)!0.55!(B.west)$);
+\node[tinytap] at (uTap) {};
+\draw[skipconn] (uTap) |- (D.west);
+\draw[skipconn] (D.east) -| (s2.north);
 
 %% ============================================================
-%% GROUPING BOX
+%% FEEDBACK PATH (x_t -> z^{-1} -> A -> s1)
 %% ============================================================
-\begin{scope}[on background layer]
-    \node[draw=orange!35, dashed, rounded corners=8pt, inner sep=10pt,
-          fit=(sum1)(delay)(Abar)(Cbar),
-          label={[font=\scriptsize\bfseries, orange!55]above:%
-                 Structured SSM core}] {};
-\end{scope}
+\draw[fbconn] (x.south) -- (z.north);
+\draw[fbconn] (z.west)  -- (A.east);
+\draw[fbconn] (A.north) -- (s1.south);
+
+%% ============================================================
+%% PATH ANNOTATIONS (centered on \xMid, off the blocks)
+%% ============================================================
+\node[annot, anchor=south] at (\xMid, \ySkip + 0.85)
+    {feedforward path (skip; often $\bar{\mathbf{D}}=0$)};
+\node[annot, anchor=north] at (\xMid, \yFb - 0.85)
+    {feedback path (hidden-state recursion through the delay register $z^{-1}$)};
+
+%% ============================================================
+%% TITLE
+%% ============================================================
+\node[titlelbl, anchor=south] at (\xMid, \yTitle)
+    {Discrete-time SISO structured state space model};
+
+%% ============================================================
+%% EQUATION CAPTION
+%% ============================================================
+\node[eqnlbl, anchor=north] at (\xMid, \yCaption)
+    {state: $\mathbf{x}_{t} = \bar{\mathbf{A}}\,\mathbf{x}_{t-1} + \bar{\mathbf{B}}\,u_{t}$
+     \qquad\qquad
+     output: $y_{t} = \bar{\mathbf{C}}\,\mathbf{x}_{t} + \bar{\mathbf{D}}\,u_{t}$};
 
 \end{tikzpicture}
 \end{document}

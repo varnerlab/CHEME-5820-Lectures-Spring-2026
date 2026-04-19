@@ -187,7 +187,7 @@ The ridge regression above is agnostic to the choice of target; different target
 >
 > The choice of target $y_{t}$ is task-specific. For today's example we take $y_{t} = u_{t}$, which trains the readout to _reconstruct the current input from the hidden state_ and tests whether the LegS basis captures enough information to invert the filter. Forecasting targets like $y_{t} = u_{t+k}$ are a natural extension and are revisited in L14c.
 
-For SISO LegS with $h = 128$ and $T \approx 2500$ (ten years of daily data), the ridge system is a $128\times 128$ linear solve that runs in a fraction of a second on CPU, replacing what would otherwise be a multi-minute SGD loop.
+For SISO LegS with $h = 128$ and $T \approx 2{,}766$ (eleven years of daily data), the ridge system is a $128\times 128$ linear solve that runs in a fraction of a second on CPU, replacing what would otherwise be a multi-minute SGD loop.
 
 ___
 

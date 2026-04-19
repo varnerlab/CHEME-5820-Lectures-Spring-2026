@@ -15,7 +15,7 @@ Let's get started!
 ___
 
 ## Setup, Data, and Prerequisites
-We set up the computational environment by including the `Include.jl` file, which sets paths, loads external packages (`JLD2`, `FileIO`, `DataFrames`, `Plots`, `StatsPlots`, `StatsBase`, `Distributions`, `LinearAlgebra`, `Statistics`), and pulls in local source files from `src/`:
+We set up the computational environment by including the [`Include.jl`](Include.jl) file, which sets paths, loads external packages, sets the random seed, and pulls in local source files from `src/`:
 * [`src/Types.jl`](src/Types.jl) defines the `MySisoLegSHippoModel` struct.
 * [`src/Compute.jl`](src/Compute.jl) defines `build_legS_matrices`, `discretize`, `build`, `rollout`, `solve`, `fit_C!`, `predict`, and `log_growth_rate`.
 * [`src/Files.jl`](src/Files.jl) defines `load_ohlc_dataset`, `save_model_checkpoint`, and `load_model_checkpoint`.
@@ -25,9 +25,7 @@ We set up the computational environment by including the `Include.jl` file, whic
 include("Include.jl"); # load packages, src/ files, set random seed
 ```
 
-    [32m[1m  Activating[22m[39m 
-
-    project at `~/Desktop/julia_work/CHEME-5820-Instances/Spring-2026/CHEME-5820-Lectures-Spring-2026/lectures/week-14/L14a`
+    [32m[1m  Activating[22m[39m project at `~/Desktop/julia_work/CHEME-5820-Instances/Spring-2026/CHEME-5820-Lectures-Spring-2026/lectures/week-14/L14a`
 
 
 ### Constants
