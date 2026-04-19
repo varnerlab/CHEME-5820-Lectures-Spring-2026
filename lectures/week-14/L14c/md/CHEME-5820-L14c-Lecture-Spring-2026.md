@@ -17,7 +17,7 @@ ___
 ## Example
 Today, we will use the following notebook to illustrate key concepts:
 
-> [▶ Forecasting coupled oscillators with a MIMO HiPPO-LegS SSM](CHEME-5820-L14c-Example-CoupledOscillators-Spring-2026.ipynb). In this example, we generate a two-channel synthetic signal from a pair of sinusoids at different frequencies, fit a MIMO LegS SSM to forecast the signal one step ahead, and evaluate the forecast on a held-out continuation of the series. We sweep the hidden dimension $h$ and the forecast horizon $k$ to see how memory and predictive lead time interact.
+> [▶ Two-channel oscillator forecasting with a MIMO HiPPO-LegS SSM](CHEME-5820-L14c-Example-TwoChannelOscillator-Spring-2026.ipynb). In this example, we generate a two-channel synthetic signal from a pair of sinusoids at different frequencies, fit a MIMO LegS SSM to forecast the signal one step ahead, and evaluate the forecast on a held-out continuation of the series. We sweep the hidden dimension $h$ and the forecast horizon $k$ to see how memory and predictive lead time interact.
 
 ___
 
@@ -158,9 +158,9 @@ ___
 ## Applied Example
 Everything in this lecture is pulled together in the companion notebook, where we generate a two-channel synthetic signal from a pair of sinusoids at different frequencies, train a MIMO LegS SSM to forecast the signal one step ahead, and evaluate on a held-out continuation of the same series.
 
-> __Example: Coupled-oscillator forecasting__
+> __Example: Two-channel oscillator forecasting__
 >
-> [▶ Forecasting coupled oscillators with a MIMO HiPPO-LegS SSM](CHEME-5820-L14c-Example-CoupledOscillators-Spring-2026.ipynb). We build a 2-input 2-output MIMO HiPPO-LegS model, train the readout by closed-form ridge regression on $\mathbf{U}_{\text{input}}, \mathbf{U}_{\text{target}}$ at forecast horizon $k=1$, and evaluate out-of-sample on a held-out continuation. We also sweep the hidden dimension $h$ and the horizon $k$ to show how reconstruction quality scales with memory and with prediction lead time.
+> [▶ Two-channel oscillator forecasting with a MIMO HiPPO-LegS SSM](CHEME-5820-L14c-Example-TwoChannelOscillator-Spring-2026.ipynb). We build a 2-input 2-output MIMO HiPPO-LegS model, train the readout by closed-form ridge regression on $\mathbf{U}_{\text{input}}, \mathbf{U}_{\text{target}}$ at forecast horizon $k=1$, and evaluate out-of-sample on a held-out continuation. We also sweep the hidden dimension $h$ and the horizon $k$ to show how reconstruction quality scales with memory and with prediction lead time.
 
 ___
 
@@ -173,5 +173,5 @@ A multi-input multi-output structured state space model replaces the scalar inpu
 > * **Multi-output training is one linear solve for all output channels:** With the state and input matrices frozen, the ridge normal equations factor through a single shared Gram matrix and a stacked right-hand side. Adding output channels therefore costs almost nothing beyond the single-output solve.
 > * **Forecasting replaces memorize as the honest out-of-sample test:** Aligning the input and target with a positive lead time makes the model predict rather than reconstruct. The forecast correlation on a held-out continuation then reflects whether the input signal carries predictable structure or is effectively white noise.
 
-For an applied example training a 2-input 2-output MIMO HiPPO-LegS model on a coupled-oscillator signal and evaluating forecast quality at multiple horizons, see the [L14c example notebook](CHEME-5820-L14c-Example-CoupledOscillators-Spring-2026.ipynb).
+For an applied example training a 2-input 2-output MIMO HiPPO-LegS model on a two-channel oscillator signal and evaluating forecast quality at multiple horizons, see the [L14c example notebook](CHEME-5820-L14c-Example-TwoChannelOscillator-Spring-2026.ipynb).
 ___
