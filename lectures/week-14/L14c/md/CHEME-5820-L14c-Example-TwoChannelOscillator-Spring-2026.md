@@ -58,7 +58,7 @@ K_SWEEP           = [1, 2, 5, 10, 20];
 
 ___
 
-## Task 1: Generate the two-channel coupled-oscillator data
+## Task 1: Generate the two-channel oscillator data
 The first task is to synthesize the two-channel signal we will forecast.
 
 > __Signal construction.__ Each channel is a noisy sinusoid at its own frequency: $u_{j,t} = \sin(2\pi f_{j} (t\,\Delta t) + \phi_{j}) + \sigma\varepsilon_{j,t}$ for $j\in\{1, 2\}$ and $\varepsilon_{j,t}\sim\mathcal{N}(0, 1)$. The frequencies `SIGNAL_FREQS`, phases `SIGNAL_PHASES`, and noise scale `SIGNAL_NOISE_σ` set the generator; because the frequencies are different, the two channels carry independent predictable structure that a MIMO forecaster can exploit. We concatenate the per-sample vectors into a matrix $\mathbf{U}\in\mathbb{R}^{T\times 2}$ whose row $t$ is the signal at time $t$.
