@@ -31,7 +31,16 @@
       "Bash(pdflatex -interaction=nonstopmode Fig-Transformer-Block.tex)",
       "Read(//private/tmp/**)",
       "Bash(cp *)",
-      "Skill(review-notebook)"
+      "Skill(review-notebook)",
+      "Bash(git commit -m ' *)",
+      "Bash(git mv *)",
+      "Bash(grep -n -E \"\\\\`\\(solve|build|fit_C!|predict|rollout|discretize|build_legS_matrices|log_growth_rate|load_ohlc_dataset|save_model_checkpoint|load_model_checkpoint|MySisoLegSHippoModel|@info|DataFrame|Dict\\)\\\\b\" /Users/jeffreyvarner/Desktop/julia_work/CHEME-5820-instances/Spring-2026/CHEME-5820-Lectures-Spring-2026/lectures/week-14/L14a/CHEME-5820-L14a-Example-Hippo-SSM-Spring-2026.ipynb)",
+      "Bash(julia --project=. -e ' *)",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/varnerlab/CHEME-5660-CourseRepository-Fall-2025/main/lectures/week-4/L4a/CHEME-5660-L4a-StylizedFacts-Example-Fall-2025.ipynb\" -o /tmp/nbcmp/L4a.ipynb)",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/varnerlab/eCornell-AI-finance-lectures/main/lectures/session-1/eCornell-AI-Finance-S1-Example-StylizedFacts-Example-May-2026.ipynb\" -o /tmp/nbcmp/S1.ipynb)",
+      "Bash(curl -sL https://raw.githubusercontent.com/varnerlab/VLQuantitativeFinancePackage.jl/main/src/Compute.jl)",
+      "Bash(curl -sL https://raw.githubusercontent.com/varnerlab/VLQuantitativeFinancePackage.jl/main/src/__TRACKED_VAR__.jl)",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/varnerlab/VLQuantitativeFinancePackage.jl/main/src/Base.jl\")"
     ]
   }
 }
