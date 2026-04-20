@@ -169,7 +169,7 @@ Everything in this lecture is pulled together in the companion notebook, where w
 ___
 
 ## Summary
-A multi-input multi-output structured state space model replaces the scalar input and output of the SISO construction with vectors and extends the HiPPO-LegS basis by running one independent SISO filter per input channel, so the state matrix is block-diagonal and the input matrix is block-rectangular. The readout remains dense and captures all the cross-channel coupling in the system. Because the state and input matrices are still frozen at the HiPPO initialization, the training loss remains quadratic in the readout and can be solved as a single closed-form ridge regression, now stacked across all output channels. Replacing the memorize target with a forecasting target turns the same machinery into a predictor rather than a reconstructor, and exposes whether the input signal actually has predictable structure beyond its present value.
+A MIMO HiPPO-LegS state space model runs one LegS filter per input channel into a block-diagonal state matrix and mixes channels in a dense readout, so training remains one closed-form ridge solve. Shifting the target by $k$ samples turns the same machinery from memorize into forecast.
 
 > __Key Takeaways:__
 >
