@@ -29,16 +29,24 @@ output channel can mix information from every input channel's history.
 - `C::Matrix{Float64}`: readout matrix, size `(d_out, h*d_in)`; updated by `fit_C!`.
 - `D::Matrix{Float64}`: feedforward matrix, size `(d_out, d_in)`.
 - `x₀::Vector{Float64}`: initial hidden state, length `h*d_in`; defaults to zeros.
+
+The struct is mutable because training updates the readout matrix `C` in place
+while leaving the state-space dynamics fixed.
 """
 mutable struct MyMimoLegSHippoModel
+    # Problem dimensions and discretization step.
     h::Int
     d_in::Int
     d_out::Int
     Δt::Float64
+
+    # Continuous-time and discrete-time state-space operators.
     A::Matrix{Float64}
     B::Matrix{Float64}
     Ā::Matrix{Float64}
     B̄::Matrix{Float64}
+
+    # Output map and initial condition used for rollouts.
     C::Matrix{Float64}
     D::Matrix{Float64}
     x₀::Vector{Float64}

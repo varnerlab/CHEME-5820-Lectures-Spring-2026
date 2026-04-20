@@ -1,13 +1,17 @@
 """
     _build_legS_single(h::Int) -> (A, b)
 
-Return the single-channel LegS state matrix `A ∈ ℝ^{h×h}` and input column
-`b ∈ ℝ^{h}` (returned as a column vector in the 1-based sign convention from
-Gu et al. 2020 with the stable form `dx/dt = A x + b u`).
+Return the single-channel LegS state matrix `A ∈ ℝ^{h×h}` and input vector
+`b ∈ ℝ^{h}` in the 1-based sign convention from Gu et al. 2020 with the stable
+form `dx/dt = A x + b u`. In Julia, `b` is returned as a length-`h` vector
+rather than an explicit `h×1` matrix.
 """
 function _build_legS_single(h::Int)
+    h >= 1 || error("h must be positive")
     A = zeros(Float64, h, h)
     b = zeros(Float64, h)
+    # Fill the lower-triangular LegS operator entry by entry so the code mirrors
+    # the analytical definition used in the lecture notes.
     for i in 1:h
         for k in 1:h
             if i > k
@@ -37,6 +41,7 @@ function build_legS_matrices_mimo(h::Int, d_in::Int)
     H = h * d_in
     A = zeros(Float64, H, H)
     B = zeros(Float64, H, d_in)
+    # Hidden-state block `j` stores the LegS state driven by input channel `j`.
     for j in 1:d_in
         rows = ((j - 1) * h + 1):(j * h)
         A[rows, rows] = A_single
@@ -50,12 +55,19 @@ end
 
 Bilinear (Tustin) discretization of the continuous pair `(A, B)` at step `Δt`.
 Valid for MIMO of arbitrary shape; `A` must be square. Returns discrete
-matrices of the same shapes as the inputs.
+matrices of the same shapes as the inputs:
+
+    Ā = (I - Δt/2 A)⁻¹ (I + Δt/2 A)
+    B̄ = (I - Δt/2 A)⁻¹ (Δt B)
 """
 function discretize(A::AbstractMatrix, B::AbstractMatrix; Δt::Float64, method::Symbol=:bilinear)
     method == :bilinear || error("only :bilinear is supported, got $(method)")
-    H = size(A, 1)
+    Δt > 0 || error("Δt must be positive")
+    H, W = size(A)
+    H == W || error("A must be square, got size $(size(A))")
+    size(B, 1) == H || error("B has $(size(B, 1)) rows, expected $(H)")
     I_H = Matrix{Float64}(I, H, H)
+    # The bilinear transform reuses the same solve for both discrete operators.
     M   = I_H - (Δt / 2) .* A
     Ā   = M \ (I_H + (Δt / 2) .* A)
     B̄   = M \ (Δt .* B)
@@ -69,7 +81,8 @@ Build a MIMO LegS HiPPO model. Constructs the block-diagonal continuous pair
 `(A, B)` and its bilinear-discretized counterpart `(Ā, B̄)`. `C` defaults to a
 zero matrix of shape `(d_out, h·d_in)` (which `fit_C!` overwrites), `D`
 defaults to a zero matrix of shape `(d_out, d_in)`, and `x₀` defaults to
-zeros.
+zeros. The returned model stores both the continuous operators `(A, B)` and the
+discrete operators `(Ā, B̄)` so either representation can be inspected.
 """
 function build(::Type{MyMimoLegSHippoModel};
     h::Int, d_in::Int, d_out::Int, Δt::Float64,
@@ -77,9 +90,12 @@ function build(::Type{MyMimoLegSHippoModel};
     D::Union{Nothing, AbstractMatrix} = nothing,
     x₀::Union{Nothing, AbstractVector} = nothing,
 )
+    d_out >= 1 || error("d_out must be positive")
+    Δt > 0 || error("Δt must be positive")
     (A, B) = build_legS_matrices_mimo(h, d_in)
     (Ā, B̄) = discretize(A, B; Δt = Δt)
     H = h * d_in
+    # Convert optional user inputs to dense Float64 arrays with the expected shapes.
     Cmat = C === nothing ? zeros(Float64, d_out, H) : Matrix{Float64}(C)
     Dmat = D === nothing ? zeros(Float64, d_out, d_in) : Matrix{Float64}(D)
     x0   = x₀ === nothing ? zeros(Float64, H) : collect(Float64, x₀)
@@ -95,7 +111,7 @@ end
 Run the discrete-time recursion `xₜ = Ā xₜ₋₁ + B̄ uₜ` with `x₀ = model.x₀` on
 the input matrix `U ∈ ℝ^{T×d_in}` (row `t` is the input vector at time `t`)
 and return the hidden-state matrix `X ∈ ℝ^{T×(h·d_in)}` whose `t`-th row is
-`xₜᵀ`. The readout is not applied.
+`xₜᵀ`. The readout is not applied, so `rollout` isolates the latent dynamics.
 """
 function rollout(model::MyMimoLegSHippoModel, U::AbstractMatrix)
     T, d_in = size(U)
@@ -103,6 +119,8 @@ function rollout(model::MyMimoLegSHippoModel, U::AbstractMatrix)
     H = model.h * model.d_in
     X = zeros(Float64, T, H)
     x = copy(model.x₀)
+    # Store one hidden-state snapshot per row so `X` can be used directly as a
+    # regression design matrix later.
     @inbounds for t in 1:T
         u = @view U[t, :]
         x = model.Ā * x + model.B̄ * u
@@ -116,10 +134,13 @@ end
 
 Roll the model forward on the input matrix `U ∈ ℝ^{T×d_in}` and apply the
 current readout to produce `Y ∈ ℝ^{T×d_out}` with `Yₜ = C xₜ + D uₜ`. Returns
-the hidden-state matrix `X` and the output matrix `Y`.
+the hidden-state matrix `X` and the output matrix `Y`. Row `t` of `Y`
+corresponds to the output vector at time step `t`.
 """
 function solve(model::MyMimoLegSHippoModel, U::AbstractMatrix)
     X = rollout(model, U)
+    # Rows of `X` and `U` are time samples, so the batched readout uses the
+    # transposed parameter matrices on the right.
     Y = X * model.C' .+ U * model.D'
     return (X, Y)
 end
@@ -135,21 +156,27 @@ solve
     Cᵀ = (XᵀX + λ I)⁻¹ Xᵀ (Y - U Dᵀ)
 
 of size `(h·d_in)`. `U ∈ ℝ^{T×d_in}` and `Y ∈ ℝ^{T×d_out}` must have the same
-number of rows.
+number of rows. The function mutates `model.C` and returns `model` for
+convenience.
 """
 function fit_C!(model::MyMimoLegSHippoModel, U::AbstractMatrix, Y::AbstractMatrix; λ::Float64 = 1.0e-4)
+    λ >= 0 || error("λ must be nonnegative")
     T_u, d_in = size(U)
     T_y, d_out = size(Y)
     T_u == T_y         || error("U has $(T_u) rows, Y has $(T_y) rows; must match")
     d_in == model.d_in || error("U has $(d_in) columns, expected $(model.d_in)")
     d_out == model.d_out || error("Y has $(d_out) columns, expected $(model.d_out)")
     X = rollout(model, U)
+    # Remove the direct feedthrough term so the regression only learns the
+    # hidden-state readout.
     Y_res = Y .- U * model.D'
     H = model.h * model.d_in
     G = X' * X + λ .* Matrix{Float64}(I, H, H)
     rhs = X' * collect(Float64, Y_res)
-    CT = G \ rhs                          # (H, d_out)
-    model.C = Matrix{Float64}(CT')        # (d_out, H)
+    # Solve all output channels in one linear system, then transpose back to the
+    # stored `C :: (d_out, H)` layout.
+    CT = G \ rhs
+    model.C = Matrix{Float64}(CT')
     return model
 end
 
@@ -158,7 +185,8 @@ end
 
 Roll the model on a new input matrix `U` using the currently trained `C` and
 `D`. If `warmup > 0`, the first `warmup` rows of `X` and `Y` are discarded so
-the hidden state has time to forget `x₀`.
+the hidden state has time to forget `x₀`. This is useful when the initial
+condition is artificial but the long-time forecast is what matters.
 """
 function predict(model::MyMimoLegSHippoModel, U::AbstractMatrix; warmup::Int = 0)
     warmup >= 0 || error("warmup must be nonnegative")
@@ -184,6 +212,7 @@ function make_forecast_pair(U::AbstractMatrix, k::Int)
     k >= 1 || error("forecast horizon k must be at least 1, got $(k)")
     T = size(U, 1)
     k < T || error("forecast horizon k = $(k) must be smaller than length $(T)")
+    # Pair each time sample with the observation `k` steps in the future.
     U_input  = U[1:(T - k), :]
     U_target = U[(1 + k):T, :]
     return (U_input, U_target)

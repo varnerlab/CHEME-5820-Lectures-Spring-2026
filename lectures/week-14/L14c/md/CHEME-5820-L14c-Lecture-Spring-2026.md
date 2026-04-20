@@ -26,8 +26,8 @@ ___
       <img
         src="figs/Fig-MIMO-SSM-Block.svg"
         alt="Discrete-time MIMO SSM block diagram"
-        height="360"
-        width="900"
+        height="500"
+        width="1250"
       />
     </center>
 </div>
@@ -84,7 +84,9 @@ One honest caveat about how this construction maps onto the canonical S4 archite
 
 > __Relation to S4 as trained in practice__
 >
-> The S4 architecture in [Gu, Goel, and Ré (2022)](https://arxiv.org/abs/2111.00396) does not put cross-channel coupling inside a single SSM layer. Instead, S4 runs one independent SISO SSM per input channel with no coupling at the SSM level, and mixes channels in a standard feedforward MLP placed between stacked SSM layers. What we build here places the mixing directly in the readout $\bar{\mathbf{C}}$ of a single SSM layer, which is mathematically valid and pedagogically simpler but architecturally closer to a wide linear observer than to S4's deep SSM-plus-MLP stack. The block-diagonal LegS structure that makes our construction work is exactly the same one S4 uses for each of its per-channel SSMs; the difference is in what we do between, and on top of, those SSMs.
+> The S4 architecture in [Gu, Goel, and Ré (2022)](https://arxiv.org/abs/2111.00396) does not put cross-channel coupling inside a single SSM layer. Instead, S4 runs one independent SISO SSM per input channel with no coupling at the SSM level, and mixes channels in a standard feedforward MLP placed between stacked SSM layers. 
+> 
+> What we build here places the mixing directly in the readout $\bar{\mathbf{C}}$ of a single SSM layer, which is mathematically valid and simpler than S4's deep SSM-plus-MLP stack. The block-diagonal LegS structure that makes our construction work is exactly the same one S4 uses for each of its per-channel SSMs; the difference is in what we do between, and on top of, those SSMs.
 
 ___
 
@@ -112,7 +114,7 @@ The helper [`fit_C!(model, U, Y; λ)`](src/Compute.jl) in `src/Compute.jl` imple
 ___
 
 ## From Memorize to Forecast
-Up to this point, nothing has pinned down what the target matrix $\mathbf{Y}$ actually represents. In L14a the target equaled the input ($y_{t} = u_{t}$), which made the task a memorization check. A more useful task for time series is _forecasting_: predict a future value of the input from its own past.
+Up to this point, nothing has pinned down what the target matrix $\mathbf{Y}$ actually represents. In L14a the target equaled the input ($y_{t} = u_{t}$), which made the task a memorization check. However, a more useful task for time series is __forecasting__: predict a future value of the input from its own past.
 
 > __Forecasting Target__
 >
@@ -129,7 +131,9 @@ The helper [`make_forecast_pair(U, k)`](src/Compute.jl) in `src/Compute.jl` retu
 
 > __Why forecasting is harder than memorizing__
 >
-> In the memorize setting the optimal decoder exists analytically: the LegS basis carries the current input in its polynomial-reconstruction coefficients, and the readout only has to extract it. In the forecast setting no such analytical optimum exists in general. The trained readout has to discover, from data, any predictable structure in the signal that survives from time $t$ to time $t+k$. If the signal is white noise, the best possible forecast is the signal's mean, and the correlation of the forecast with the realized future value is essentially zero regardless of how large $h$ grows. If the signal has genuine dynamical structure, the observer can extract it, and the forecast correlation can approach one. The two-channel oscillator example in the companion notebook is in this second regime by construction.
+> In the memorize setting the optimal decoder exists analytically: the LegS basis carries the current input in its polynomial-reconstruction coefficients, and the readout only has to extract it. In the forecast setting no such analytical optimum exists in general. 
+> 
+> The trained readout has to discover, from data, any predictable structure in the signal that survives from time $t$ to time $t+k$. If the signal is white noise, the best possible forecast is the signal's mean, and the correlation of the forecast with the realized future value is (essentially) zero regardless of how large $h$ grows. If the signal has genuine dynamical structure, the observer can extract it, and the forecast correlation can approach one. The two-channel oscillator example in the companion notebook is in this second regime by construction.
 
 ___
 
@@ -143,7 +147,7 @@ Linear forecasting of vector time series has a long history outside the SSM lite
 > | Memory mechanism | Fixed $p$ most recent lags | Learned / assumed state-space dynamics | HiPPO-LegS polynomial summary of full history |
 > | Dynamics | Linear, data-fit | Linear, model-specified | Linear, HiPPO-initialized + learned readout |
 > | Training cost | OLS on lag-stacked matrix | EM or joint maximum likelihood | One closed-form ridge solve |
-> | Memory cost in $T$ | $\mathcal{O}(p\,d)$ per time step | $\mathcal{O}(H\,d)$ per time step | $\mathcal{O}(H\,d)$ per time step |
+> | Per-step memory | $\mathcal{O}(p\,d)$ | $\mathcal{O}(H\,d)$ | $\mathcal{O}(H\,d)$ |
 > | Parameters to learn | $p\,d^{2}$ lag matrices | up to $H^{2} + H\,d$ dynamics entries | $d_{\text{out}}\,H$ entries of the readout |
 > | Long-range memory | Truncated at lag $p$ | Geometric decay by state dynamics | Polynomial-approximation guarantee |
 
@@ -160,7 +164,7 @@ Everything in this lecture is pulled together in the companion notebook, where w
 
 > __Example: Two-channel oscillator forecasting__
 >
-> [▶ Two-channel oscillator forecasting with a MIMO HiPPO-LegS SSM](CHEME-5820-L14c-Example-TwoChannelOscillator-Spring-2026.ipynb). We build a 2-input 2-output MIMO HiPPO-LegS model, train the readout by closed-form ridge regression on $\mathbf{U}_{\text{input}}, \mathbf{U}_{\text{target}}$ at forecast horizon $k=1$, and evaluate out-of-sample on a held-out continuation. We also sweep the hidden dimension $h$ and the horizon $k$ to show how reconstruction quality scales with memory and with prediction lead time.
+> [▶ Two-channel oscillator forecasting with a MIMO HiPPO-LegS SSM](CHEME-5820-L14c-Example-TwoChannelOscillator-Spring-2026.ipynb). We build a 2-input 2-output MIMO HiPPO-LegS model, train the readout by closed-form ridge regression on $\mathbf{U}_{\text{input}}, \mathbf{U}_{\text{target}}$ at forecast horizon $k=1$, and evaluate out-of-sample on a held-out continuation. We also sweep the hidden dimension $h$ and the horizon $k$ to show how forecast quality scales with memory and with prediction lead time.
 
 ___
 
