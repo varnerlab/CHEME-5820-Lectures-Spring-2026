@@ -40,7 +40,8 @@
       "Bash(curl -sL \"https://raw.githubusercontent.com/varnerlab/eCornell-AI-finance-lectures/main/lectures/session-1/eCornell-AI-Finance-S1-Example-StylizedFacts-Example-May-2026.ipynb\" -o /tmp/nbcmp/S1.ipynb)",
       "Bash(curl -sL https://raw.githubusercontent.com/varnerlab/VLQuantitativeFinancePackage.jl/main/src/Compute.jl)",
       "Bash(curl -sL https://raw.githubusercontent.com/varnerlab/VLQuantitativeFinancePackage.jl/main/src/__TRACKED_VAR__.jl)",
-      "Bash(curl -sL \"https://raw.githubusercontent.com/varnerlab/VLQuantitativeFinancePackage.jl/main/src/Base.jl\")"
+      "Bash(curl -sL \"https://raw.githubusercontent.com/varnerlab/VLQuantitativeFinancePackage.jl/main/src/Base.jl\")",
+      "Bash(julia --version)"
     ]
   }
 }
