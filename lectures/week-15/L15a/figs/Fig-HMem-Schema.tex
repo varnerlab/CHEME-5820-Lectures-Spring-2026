@@ -144,33 +144,28 @@
 \node[branchlbl, anchor=south] at (recallBox.north) {recall branch};
 
 %% ============================================================
-%% TITLE
+%% LEGEND (top-left)
 %% ============================================================
-\node[titlelbl, anchor=south] at (\xMid, \yOut + 1.1)
-    {H-Mem schema: trained encoders (blue) + Hebbian-plastic association matrix (orange)};
-
-%% ============================================================
-%% LEGEND
-%% ============================================================
-\def\yLeg{-7.0}
-\node[legendboxA] (legA) at (-7.5, \yLeg) {};
+\def\xLeg{-9.6}
+\def\yLeg{\yOut - 0.2}
+\node[legendboxA] (legA) at (\xLeg, \yLeg) {};
 \node[anchor=west, font=\footnotesize] at ($(legA.east) + (0.10,0)$)
     {trained once (BPTT, surrogate gradients)};
 
-\node[legendboxB] (legB) at (-7.5, \yLeg - 0.45) {};
+\node[legendboxB] (legB) at (\xLeg, \yLeg - 0.45) {};
 \node[anchor=west, font=\footnotesize] at ($(legB.east) + (0.10,0)$)
     {written at inference time (Hebbian plasticity)};
 
-\node[legendboxC] (legC) at (-7.5, \yLeg - 0.90) {};
+\node[legendboxC] (legC) at (\xLeg, \yLeg - 0.90) {};
 \node[anchor=west, font=\footnotesize] at ($(legC.east) + (0.10,0)$)
     {neuron-population activations};
 
-\draw[plastconn] ($(2.0, \yLeg)$) -- ($(2.7, \yLeg)$);
-\node[anchor=west, font=\footnotesize] at ($(2.80, \yLeg)$)
+\draw[plastconn] ($(\xLeg - 0.30, \yLeg - 1.35)$) -- ($(\xLeg + 0.30, \yLeg - 1.35)$);
+\node[anchor=west, font=\footnotesize] at ($(\xLeg + 0.40, \yLeg - 1.35)$)
     {Hebbian write path};
 
-\draw[readconn] ($(2.0, \yLeg - 0.45)$) -- ($(2.7, \yLeg - 0.45)$);
-\node[anchor=west, font=\footnotesize] at ($(2.80, \yLeg - 0.45)$)
+\draw[readconn] ($(\xLeg - 0.30, \yLeg - 1.80)$) -- ($(\xLeg + 0.30, \yLeg - 1.80)$);
+\node[anchor=west, font=\footnotesize] at ($(\xLeg + 0.40, \yLeg - 1.80)$)
     {matrix-vector read path};
 
 \end{tikzpicture}
