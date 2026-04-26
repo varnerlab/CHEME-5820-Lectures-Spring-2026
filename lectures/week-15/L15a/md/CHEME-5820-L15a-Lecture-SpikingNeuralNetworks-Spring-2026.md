@@ -1,0 +1,240 @@
+# L15a: Spiking Neural Networks
+This lecture introduces a different family of neural network, the _spiking neural network_ (SNN). Unlike the artificial neural networks we have studied so far, which propagate continuous activations through differentiable nonlinearities, an SNN propagates discrete binary _spikes_ between neurons whose internal state evolves as a linear dynamical system. Information is carried by _when_ spikes occur, not by the magnitude of an activation.
+
+Today, we'll focus on _Leaky Integrate-and-Fire_ (LIF) neurons, the standard workhorse of computational neuroscience and the unit cell of specialized neuromorphic-hardware under deployment for the next generation of lower-power AI applications, e.g., low-power chips such as [Intel Loihi 2](https://www.intel.com/content/www/us/en/research/neuromorphic-computing.html) and [IBM NorthPole](https://research.ibm.com/blog/northpole-ibm-ai-chip).
+
+<!-- Each LIF neuron is a one-dimensional linear filter on its input current with a threshold rule that emits a spike and resets the state. A network of such neurons is governed by a sparse synaptic weight matrix and a clock $\Delta t$, and runs by simulation rather than by gradient descent. The same architecture motivates As a worked-out application of the LIF substrate, we close with the _Hebbian Memory Network_ (H-Mem) of [Limbacher and Legenstein (2020)](https://proceedings.neurips.cc/paper/2020/file/f6876a9f998f6472cc26708e27444456-Paper.pdf) and its spiking extension by [Limbacher, Özdenizci, and Legenstein (2022)](https://arxiv.org/abs/2205.11276), which use Hebbian plasticity on a LIF substrate to implement one-shot hetero-associative memory. -->
+
+> __Learning Objectives:__
+>
+> By the end of this lecture, you should be able to:
+>
+> * __Write down the LIF neuron model in continuous and discrete time:__ State the leaky-integrator ordinary differential equation for the membrane potential, derive its zero-order-hold discretization with a leak factor that depends on the step size and time constant, and describe the role of the firing threshold and the spike-reset term in the recursion.
+> * __Vectorize a network of LIF neurons and identify the shape of each matrix and vector in the recursion:__ Stack per-neuron membrane potentials and spike states into vectors, write the input current as a synaptic-weight matrix times a pre-synaptic spike vector, and state the dimensions of the membrane potential, spike, weight, and input matrices.
+> * __Explain how Hebbian plasticity on a LIF substrate implements one-shot hetero-associative memory:__ State the Hebbian outer-product write rule and the matrix-vector read rule for [the H-Mem association matrix](https://proceedings.neurips.cc/paper/2020/file/f6876a9f998f6472cc26708e27444456-Paper.pdf), identify which weights are trained by gradient descent and which are written at inference time by plasticity, and describe how the spike-trace filter couples the LIF dynamics to the Hebbian update.
+
+Let's get started!
+___
+
+## Example
+Today, we will use the following notebook to illustrate key concepts:
+
+> [▶ Hebbian associative memory in the rate domain](CHEME-5820-L15a-Example-SpikingNeuralNetwork-Spring-2026.ipynb). In this example, we build the Hebbian Memory module of [Limbacher and Legenstein (2020)](https://proceedings.neurips.cc/paper/2020/file/f6876a9f998f6472cc26708e27444456-Paper.pdf) in isolation. We generate $K$ random sparse key-value pairs in $\mathbb{R}^m$, write them into a fresh association matrix $\mathbf{W}^{\text{assoc}}$ via the Hebbian outer-product rule, and read each one back as $\mathbf{v} = \mathbf{W}^{\text{assoc}}\,\mathbf{k}$. We then sweep the load factor $K/m$ to characterize capacity, and corrupt the query keys to characterize robustness to partial cues.
+
+___
+
+## Why Spiking Neural Networks?
+Conventional artificial neural networks (ANNs) propagate continuous activations through differentiable nonlinearities and learn their weights by gradient descent on a smooth loss. This is mathematically convenient, but it departs from the original McCulloch-Pitts picture and is energetically expensive at deployment, since every layer must compute and store dense floating-point activations on every forward pass.
+
+Spiking neural networks take a different starting point. The unit of information is a _binary event_, the spike, and computation proceeds in discrete time. A neuron sits silent until its membrane potential crosses a threshold, at which point it emits a single spike and resets. Between spikes, no work is done. Two consequences of this event-driven design motivate the SNN literature: energy efficiency on neuromorphic hardware, and native handling of temporal data
+
+* __Energy efficiency on neuromorphic hardware:__ Specialized chips such as [Intel Loihi 2](https://www.intel.com/content/www/us/en/research/neuromorphic-computing.html) and [IBM NorthPole](https://research.ibm.com/blog/northpole-ibm-ai-chip) implement spike communication directly in silicon, with energy cost dominated by spike events rather than by clock cycles. Sparse spike traffic translates to orders-of-magnitude lower power than running the same network as a dense ANN on a GPU.
+* __Native handling of temporal data:__ The state of a LIF neuron is a continuous-time linear filter on its input current, so timing differences between input spikes propagate naturally through the network. Tasks with strong temporal structure (audio, event-based vision, sensorimotor control) sit naturally on this substrate.
+
+The cost of this design is that the spike emission rule is a Heaviside step function, which is _not differentiable_. Backpropagation does not apply directly, and a substantial part of the SNN literature is dedicated to working around this fact. We return to it after we have written the model down.
+
+___
+
+## The Leaky Integrate-and-Fire (LIF) Neuron
+The Leaky Integrate-and-Fire (LIF) model is the simplest dynamical model that captures the two features that make a biological neuron useful as a computational unit: a leaky memory of recent input, and a threshold-driven all-or-nothing output. It is the unit cell from which every spiking network we build is assembled. We develop the model in two passes: first the continuous-time ODE, then the discrete-time recursion that simulation and hardware actually use.
+
+### Continuous-Time Form
+
+> __Continuous-Time LIF Neuron__
+>
+> Let $V(t)\in\mathbb{R}$ be the _membrane potential_ of a single neuron and let $I(t)\in\mathbb{R}$ be its _input current_. The membrane potential's leaky integrate-and-fire dynamics are governed by the ordinary differential equation (ODE):
+> $$
+\boxed{
+\tau\,\dot{V}(t) = -V(t) + I(t),\qquad V(t)\in\mathbb{R},\;I(t)\in\mathbb{R}
+}
+> $$
+> When the membrane potential $V(t)$ reaches the firing threshold $\nu > 0$, the neuron emits a spike and the membrane potential _decays or leaks_ back to its resting value (taken here to be zero). The time constant $\tau > 0$ controls how quickly the membrane potential leaks back toward rest in the absence of input.
+
+The dynamics between spikes are linear and time-invariant, with a single eigenvalue $-1/\tau$ (thus, the system is stable around the resting potential). The nonlinearity of this model lives entirely in the threshold-and-reset rules. That makes the model interesting, but as we will see in a moment, it also makes it hard to train.
+
+### Discrete-Time Recursion
+Simulation and hardware deployment both run in discrete time, so we discretize the LIF ODE at step size $\Delta t > 0$. Integrating the linear part exactly over one step (the zero-order-hold method) and folding the spike-reset into the recursion gives a clean update rule.
+
+> __Discrete-Time LIF Recursion__
+>
+> With decay factor $\alpha = \exp(-\Delta t/\tau)\in (0, 1)$, the membrane potential and spike state of a single LIF neuron evolve over discrete time steps as:
+> $$
+\boxed{
+\begin{align*}
+V(t + \Delta t) &= \alpha\,V(t) + (1 - \alpha)\,I(t) - \nu\,z(t)\\
+z(t + \Delta t) &= H\!\left(V(t + \Delta t) - \nu\right)
+\end{align*}}
+> $$
+> where $H(x) = \mathbb{1}\{x \ge 0\}$ is the Heaviside step function and $z(t)\in\{0, 1\}$ is the binary spike state at time $t$. The term $-\nu\,z(t)$ subtracts off the threshold the instant after a spike, which implements the reset to rest state in a single arithmetic operation.
+
+The recursion above is faithful to the model only if a freshly fired neuron is held silent for the next $\Delta_{r}$ steps which we call the _refractory period_. Without this guard, a neuron whose input current stays above threshold would fire on every step regardless of the reset, because the input would drive $V$ back across $\nu$ within one $\Delta t$.
+
+> __Refractory Guard__
+>
+> Maintain a per-neuron countdown $r(t)\in\{0, 1, \ldots, \Delta_{r}\}$ initialized to zero, where $\Delta_{r}\in\mathbb{Z}_{\ge 0}$ is the refractory period, i.e., how long the neuron remains silent after firing, measured in time steps. The simple Heaviside spike rule is then replaced by the expression:
+> $$
+z(t + \Delta t) = 
+\begin{cases}
+1, & \text{if}\;V(t + \Delta t) \ge \nu \;\text{and}\; r(t) = 0 \\
+0, & \text{otherwise}
+\end{cases}
+> $$
+> where the per-neuron refractory countdown $r$ is updated as $r(t + \Delta t) = \Delta_{r}$ if a spike was emitted, and $r(t + \Delta t) = \max\{r(t) - 1, 0\}$ otherwise. This caps the firing rate of every neuron at $1/((\Delta_{r} + 1)\Delta t)$.
+
+The decay factor $\alpha$ is the only place where the time constant $\tau$ enters the discrete-time model; once $\Delta t$ and $\tau$ are fixed, $\alpha$ is fixed too. Two limiting cases are useful for intuition. If $\Delta t \ll \tau$, then $\alpha \to 1$ and each input contribution decays only slightly per step, so the membrane potential effectively sums input from many recent steps before that contribution leaks away. This gives the neuron a long temporal window. If $\Delta t \gtrsim \tau$, then $\alpha \to 0$ and the membrane forgets the previous step almost entirely, which collapses the LIF unit toward an instantaneous threshold detector. Note that this short-window limit is essentially a McCulloch-Pitts/perceptron unit with a Heaviside activation, which is the oldest and most primitive form of ANN neuron.
+
+> __Dimension Dictionary (single neuron)__
+>
+> * $V(t)\in\mathbb{R}$ is the membrane potential at time $t$.
+> * $I(t)\in\mathbb{R}$ is the input current at time $t$.
+> * $z(t)\in\{0, 1\}$ is the binary spike state at time $t$, which equals $1$ at the instant of a spike and $0$ otherwise.
+> * $\tau > 0$ is the membrane time constant.
+> * $\nu > 0$ is the firing threshold.
+> * $\alpha = \exp(-\Delta t/\tau)\in (0, 1)$ is the per-step decay factor of the discrete-time recursion.
+> * $\Delta t > 0$ is the discretization step size.
+> * $\Delta_{r}\in\mathbb{Z}_{\ge 0}$ is the refractory period, measured in time steps, during which a freshly fired neuron cannot spike again.
+> * $r(t)\in\{0, 1, \ldots, \Delta_{r}\}$ is the per-neuron refractory countdown.
+
+<!-- Two physical features of the model are worth pausing on. First, between spikes the membrane potential is a low-pass filter on the input current, so high-frequency input components are attenuated and the neuron integrates a sliding-window average rather than reacting instantaneously. Second, the reset and refractory period together cap the maximum firing rate at $1/((\Delta_{r} + 1)\Delta t)$, which prevents a single neuron from firing on every time step regardless of how strong the input is. -->
+
+___
+
+## Networks of LIF Neurons
+Now that we understand the individual LIF neuron, we can wire them together. We build a single-layer feedforward network: a vector of $d_{\text{in}}$ input neurons drives a layer of $N$ LIF neurons through a synaptic weight matrix.
+
+> __Vector LIF Network__
+>
+> Let $\mathbf{V}_{t}\in\mathbb{R}^{N}$ be the membrane-potential vector of $N$ LIF neurons at time $t$, let $\mathbf{z}_{t}\in\{0, 1\}^{N}$ be their spike-state vector, and let $\mathbf{u}_{t}\in\{0, 1\}^{d_{\text{in}}}$ be the input spike vector at time $t$ ($u_{j,t} = 1$ if input channel $j$ delivers a spike on this step, $0$ otherwise). With synaptic weight matrix $\mathbf{W}\in\mathbb{R}^{N\times d_{\text{in}}}$ (entry $W_{ij}$ is the weight from input channel $j$ to LIF neuron $i$) and input current vector $\mathbf{I}_{t}\in\mathbb{R}^{N}$, the network recursion is given by:
+> $$
+\boxed{
+\begin{align*}
+\mathbf{I}_{t} &= \mathbf{W}\,\mathbf{u}_{t}\\
+\mathbf{V}_{t+\Delta t} &= \alpha\,\mathbf{V}_{t} + (1 - \alpha)\,\mathbf{I}_{t} - \nu\,\mathbf{z}_{t}\\
+\mathbf{z}_{t+\Delta t} &= H\!\left(\mathbf{V}_{t+\Delta t} - \nu\,\mathbf{1}\right)\odot\mathbb{1}\{\mathbf{r}_{t} = \mathbf{0}\}
+\end{align*}}
+> $$
+> where $\alpha = \exp(-\Delta t/\tau)\in (0, 1)$ is the per-step decay factor, $\nu > 0$ is the firing threshold, $H(x) = \mathbb{1}\{x \ge 0\}$ is the Heaviside step function applied componentwise, $\mathbf{1}\in\mathbb{R}^{N}$ is the all-ones vector and $\mathbf{0}\in\mathbb{Z}^{N}$ is the all-zeros vector (so $\nu\,\mathbf{1}$ is a length-$N$ vector with every entry equal to the threshold), $\mathbb{1}\{\mathbf{r}_{t} = \mathbf{0}\}\in\{0, 1\}^{N}$ is the componentwise indicator that returns $1$ for each neuron not in refractory and $0$ otherwise, $\odot$ is the Hadamard (elementwise) product, and $\mathbf{r}_{t}\in\mathbb{Z}_{\ge 0}^{N}$ is the per-neuron refractory countdown updated as in the single-neuron rule with shared refractory length $\Delta_{r}$. 
+
+Three features of the vectorized recursion are worth highlighting. 
+* First, the synaptic weight matrix $\mathbf{W}$ is the only learnable object in the network; the membrane time constant, threshold, and refractory period are usually treated as fixed hyperparameters. The hyperparameters $\alpha$, $\nu$, and $\Delta_{r}$ are shared across all $N$ neurons.
+* Second, the input current at each step is a pure matrix-vector product, which means the simulation cost per time step is $\mathcal{O}(N\cdot d_{\text{in}})$, identical to a dense ANN layer of the same size. 
+* Third, sparsity in $\mathbf{u}_{t}$ and $\mathbf{z}_{t}$ propagates through the recursion: if the average input firing rate is low, the input current is computed by summing only the active columns of $\mathbf{W}$, which is exactly the regime that neuromorphic chips exploit.
+
+Stacking layers and adding recurrent connections is straightforward; the resulting network is still a discrete-time linear filter punctuated by Heaviside thresholds. 
+
+___
+
+## Encoding Information and Training Spiking Neural Networks
+Let's explore two practical questions: inputs and training. First, because spike states are binary, an SNN cannot accept a real-valued input vector directly: the input has to be converted into a sequence of binary spike events. Second, because the spike emission rule is a Heaviside step function, standard gradient-based optimization approaches do not apply.
+
+Let's take these questions in turn.
+
+> __Rate vs. Temporal Coding__
+>
+> There are two canonical ways to encode a real-valued input vector $\mathbf{x}\in[0, 1]^{d_{\text{in}}}$ as a binary spike sequence $\{\mathbf{u}_{t}\}_{t=1}^{T}$, where $T$ is the simulation window length in time steps and $u_{j,t}\in\{0, 1\}$ is the $j$-th component of the input spike vector at time step $t$: rate coding and temporal coding.
+>
+> Let's unpack these two schemes in more detail.
+> 
+> Let $\mathbf{x}\in[0, 1]^{d_{\text{in}}}$ be a real-valued input pattern, $T\in\mathbb{Z}_{>0}$ be the simulation window length in time steps, and $u_{j,t}\in\{0, 1\}$ be the $j$-th component of the input spike vector $\mathbf{u}_{t}\in\{0, 1\}^{d_{\text{in}}}$ at time step $t\in\{1,\ldots,T\}$.
+> * __Rate coding__ encodes $\mathbf{x}$ as a Poisson spike train: at every time step $t$, draw $u_{j,t}\sim\text{Bernoulli}(x_{j})$ independently for each input channel $j$. The encoding is recovered by averaging spikes over the window: $\hat{x}_{j} = (1/T)\sum_{t=1}^{T}u_{j,t}\in[0, 1]$. Rate coding is robust to noise but requires long windows to recover small differences in $\mathbf{x}$.
+> * __Temporal coding__ encodes $x_{j}$ in the time $t_{j}\in\{1,\ldots,T\}$ of the first spike: input channel $j$ fires its single spike at $t_{j} = T\,(1 - x_{j})$ so that larger inputs fire earlier. Temporal coding is bandwidth-efficient (one spike per input dimension) but extremely noise-sensitive.
+
+<!-- The example notebook uses Poisson rate coding because it is the simpler of the two and decouples the encoder from the network: the LIF dynamics do not need to know which encoding produced their input, only that the input is a binary spike matrix in $\{0, 1\}^{d_{\text{in}}\times T}$. -->
+
+The Heaviside spike rule has gradient zero almost everywhere and is undefined at the threshold itself, so there is no direct analogue of backpropagation through time for SNNs without modifying either the model or the gradient. Three families of workarounds dominate the literature.
+
+__Three Routes to Trainable SNNs__
+* __Surrogate gradients:__ Replace the zero gradient of the Heaviside spike rule with a smooth surrogate (e.g. a sigmoid derivative or a triangular pulse) only during the backward pass, while keeping the true Heaviside on the forward pass. This recovers a standard backpropagation-through-time loop and is currently the most popular approach. See [Neftci, Mostafa, and Zenke (2019)](https://arxiv.org/abs/1901.09948).
+* __Spike-Timing-Dependent Plasticity (STDP):__ Update each synaptic weight $w_{ij}$ (the entry $W_{ij}$ of $\mathbf{W}$ from pre-synaptic neuron $j$ to post-synaptic neuron $i$) by a local rule that depends only on the relative timing of pre- and post-synaptic spikes, with no global loss. STDP is biologically plausible and entirely local, but it does not optimize a task-level objective directly and is harder to use for supervised learning. See [Limbacher, Özdenizci, and Legenstein (2022)](https://arxiv.org/abs/2205.11276) for a Hebbian-plasticity-augmented variant.
+* __ANN-to-SNN conversion:__ Train a conventional ANN by ordinary backpropagation, then map its weights and ReLU activations onto rate-coded LIF neurons whose firing rate approximates the original activation. This requires no surrogate gradients, but the conversion is exact only in the long-window limit and gives up much of the SNN's latency and energy advantages.
+
+All three approaches treat the synaptic weight matrix $\mathbf{W}$ as the only learnable object, which is consistent with the structure of the LIF recursion: the dynamical hyperparameters $\tau$, $\nu$, $\Delta_{r}$, and $\Delta t$ are usually fixed before training begins. 
+
+<!-- The example notebook does not train the network; it runs a randomly initialized $\mathbf{W}$ forward and inspects the resulting spike rasters, so the training problem is a topic for the next course rather than for today. -->
+
+___
+
+<div>
+    <center>
+      <img
+        src="figs/Fig-HMem-Schema.svg"
+        alt="H-Mem schema: trained encoders feeding a Hebbian-plastic association matrix that is written at inference time and read by a single matrix-vector product"
+        height="700"
+        width="950"
+      />
+    </center>
+</div>
+
+## Application: H-Mem, Hebbian Memory on a LIF Layer
+An LIF network's memory lives entirely in $\mathbf{V}_{t}$, and it lasts on the order of the membrane time constant, about $\tau \approx 20$ ms in the parameter regime we use. To retain an association for longer than that, we need storage that the network can write to _at inference time_ and read back later. 
+
+The problem statement is a classical _key-value memory_: store a set of (key, value) pairs $(\mathbf{k}_1, \mathbf{v}_1), (\mathbf{k}_2, \mathbf{v}_2), \ldots, (\mathbf{k}_K, \mathbf{v}_K)$, then later given a query key $\mathbf{q}$ that may be noisy or incomplete, retrieve the value associated with the best-matching stored key. This is _hetero-associative_ memory: "hetero" because the key and the value live in different semantic spaces (e.g., key = a question, value = the answer).
+
+The _Hebbian Memory Network_ (H-Mem) of [Limbacher and Legenstein (2020)](https://proceedings.neurips.cc/paper/2020/file/f6876a9f998f6472cc26708e27444456-Paper.pdf) and its spiking extension by [Limbacher, Özdenizci, and Legenstein (2022)](https://arxiv.org/abs/2205.11276) do exactly this: they add a Hebbian-plastic association matrix $\mathbf{W}^{\text{assoc}}_{t}$ on top of the LIF layer, written by a local outer-product rule and read back by a single matrix-vector product that retrieves the value associated with the closest stored key, even when the query is noisy or incomplete.
+
+> __H-Mem: Architecture, Write Rule, and Recall Rule__
+>
+> H-Mem operates in two phases. During the _write phase_, an encoded (key, value) input drives two LIF layers, called the _key-layer_ and the _value-layer_; their joint co-activation accumulates into a Hebbian-plastic _association matrix_ via a local update rule. During the _recall phase_, an encoded query drives only the key-layer, and the association matrix, now frozen, maps the key-layer spikes into a value-layer current that reproduces the stored value.
+>
+> Let $\ell\in\mathbb{Z}_{>0}$ be the common layer width and $d_{\text{enc}}\in\mathbb{Z}_{>0}$ be the encoder output width. Each of the key- and value-layers is a vector LIF layer of width $\ell$ obeying the recursion of the previous section, with its own membrane potential and refractory countdown. H-Mem couples three populations of neurons through one plastic matrix:
+> * A _key-layer_ of $\ell$ LIF neurons with spike vector $\mathbf{z}^{\text{key}}_{t}\in\{0, 1\}^{\ell}$ and a _value-layer_ of $\ell$ LIF neurons with spike vector $\mathbf{z}^{\text{value}}_{t}\in\{0, 1\}^{\ell}$.
+> * An _association matrix_ $\mathbf{W}^{\text{assoc}}_{t}\in\mathbb{R}^{\ell\times \ell}$ connecting the key-layer (pre-synaptic) to the value-layer (post-synaptic). $\mathbf{W}^{\text{assoc}}_{t}$ is a state variable, not a learned parameter, and is rewritten on the fly. Its size is fixed at $\ell^{2}$ regardless of how many pairs are written, which gives H-Mem constant-time recall and a capacity ceiling on the order of $\ell$ roughly-orthogonal pairs.
+> * Trained encoder matrices $\mathbf{W}^{s,\text{key}}, \mathbf{W}^{s,\text{val}}, \mathbf{W}^{r,\text{key}}\in\mathbb{R}^{\ell\times d_{\text{enc}}}$ that project from the external embedding space ($d_{\text{enc}}$) into the H-Mem internal space ($\ell$). The $s$-encoders convert each input spike train $\mathbf{z}^{\text{enc}}_{t}\in\{0, 1\}^{d_{\text{enc}}}$ into key- and value-layer drive at write time; the $r$-encoder drives the key-layer at recall time.
+>
+> __Write rule (Hebbian).__ Let $\kappa^{\text{key}}_{j}(t)$ and $\kappa^{\text{value}}_{k}(t)$ for $j, k = 1, \ldots, \ell$ be the low-pass-filtered spike traces of the key- and value-layer neurons, defined by $\tau_{\text{trace}}\,\dot\kappa_{j}(t) = -\kappa_{j}(t) + z_{j}(t)$ with trace time constant $\tau_{\text{trace}}\approx 20$ ms. While a (key, value) pair is being presented, the per-step update to entry $(k, j)$ of the association matrix (the synapse from key-layer neuron $j$ to value-layer neuron $k$) is
+> $$
+\boxed{
+\Delta W^{\text{assoc}}_{kj}(t) = \gamma_{+}\bigl(w^{\max} - W^{\text{assoc}}_{kj}(t)\bigr)\,\kappa^{\text{value}}_{k}(t)\,\kappa^{\text{key}}_{j}(t) - \gamma_{-}\,W^{\text{assoc}}_{kj}(t)\,\bigl(\kappa^{\text{key}}_{j}(t)\bigr)^{2}
+}
+> $$
+> with potentiation rate $\gamma_{+} > 0$, depression rate $\gamma_{-} > 0$, and soft upper bound $w^{\max} > 0$. The first term implements Hebbian "fire together, wire together"; the second is an [Oja-style](https://link.springer.com/article/10.1007/BF00275687) bound that lets fresh associations overwrite stale ones. The update is _local_: it depends only on $\kappa^{\text{key}}_{j}$, $\kappa^{\text{value}}_{k}$, and the current $W^{\text{assoc}}_{kj}$, with no global error signal.
+>
+> __Recall rule.__ A query embedding drives the key-layer to a fresh spike pattern $\mathbf{z}^{q,\text{key}}_{t}\in\{0, 1\}^{\ell}$, and the value-layer's input current vector is
+> $$
+\boxed{
+\mathbf{I}^{\text{value}}_{t} = \mathbf{W}^{\text{assoc}}_{t}\,\mathbf{z}^{q,\text{key}}_{t}\in\mathbb{R}^{\ell}
+}
+> $$
+> exactly as if $\mathbf{W}^{\text{assoc}}_{t}$ were a frozen weight matrix. If the query key matches the stored key, the recall current is large in the value-layer dimensions that were active during the write, and those neurons fire to reproduce the stored value pattern.
+
+The role-of-each-matrix split is what makes this whole design work in practice.
+
+__What is learned and what is written__
+* __Trained by gradient descent (BPTT with surrogate gradients):__ the input encoders $\mathbf{W}^{s,\text{key}}, \mathbf{W}^{s,\text{val}}$, the query encoder $\mathbf{W}^{r,\text{key}}$, and the readout $\mathbf{W}^{\text{out}}$. These shape what counts as a useful key and a useful value for the task.
+* __Written by Hebbian plasticity at inference time:__ the association matrix $\mathbf{W}^{\text{assoc}}$. This is _never_ a learned parameter; it is reset to zero at the start of every input sequence and rebuilt by the write rule above.
+* __Why this split matters:__ Memorizing a new (key, value) pair is one outer-product update (a single forward pass), so the network supports _one-shot_ learning at inference time. The encoders only need to be trained once on a generic distribution of (key, value) pairs; the association matrix handles the per-instance memorization.
+
+[Limbacher and Legenstein (2020)](https://proceedings.neurips.cc/paper/2020/file/f6876a9f998f6472cc26708e27444456-Paper.pdf) demonstrate that a rate-version of this architecture solves all 20 tasks of the [bAbI question-answering benchmark](https://arxiv.org/abs/1502.05698) at $0.6\%$ mean error, outperforming LSTM and matching memory-augmented neural networks that rely on far more elaborate digital memory modules. [Limbacher, Özdenizci, and Legenstein (2022)](https://arxiv.org/abs/2205.11276) lift the same architecture onto LIF neurons with spike-trace Hebbian plasticity (parameters $\vartheta = 0.1$, $\Delta_{\text{abs}} = 3$ ms, $\tau_{m} = \tau_{\text{trace}} = 20$ ms, $w^{\max} = 1.0$, $\gamma_{+} = \gamma_{-} = 0.3$) and demonstrate one-shot Omniglot classification, cross-modal audio-to-image association, bAbI question answering, and a reinforcement-learning version of the _Concentration_ card-flip game. The companion example notebook implements the rate version of the memory module in isolation; the L15b lab puts it back on top of LIF neurons with spike traces.
+
+___
+
+## How SNNs Compare to ANNs
+An SNN and an ANN of the same width and depth share the same matrix-multiplication backbone but differ on every other axis that matters in practice: the unit of information, the training procedure, and the deployment target.
+
+> __Spiking versus artificial neural networks__
+>
+> | Property | ANN (e.g. MLP, RNN, Transformer) | SNN (LIF) |
+> |---|---|---|
+> | Unit of information | Continuous activation (float) | Binary spike (bit) |
+> | Time | Implicit (one forward pass per input) | Explicit clock $\Delta t$ |
+> | Hidden state | Often none (MLP) or learned nonlinear (RNN) | Linear leaky integrator with threshold reset |
+> | Training method | Backpropagation on a smooth loss | Surrogate gradient, STDP, or ANN-to-SNN conversion |
+> | Energy at deployment | Dense floating-point work every layer | Event-driven, sparse spike traffic |
+> | Native hardware | GPU / TPU | Neuromorphic ASIC (Loihi, NorthPole) |
+> | Strength | Static, high-dimensional pattern data | Temporal data, low-power inference |
+
+The asymmetry on the bottom three rows is the practical reason the SNN literature exists. An ANN trained by backpropagation can be deployed on a neuromorphic chip only after a lossy conversion step, and an SNN trained on a neuromorphic chip cannot be evaluated by ordinary backpropagation without a surrogate. Whether the latency and energy savings of the spiking substrate outweigh the training overhead is task-dependent, and is currently an active research question rather than a settled engineering tradeoff.
+
+___
+
+## Summary
+A spiking neural network replaces the continuous activations of an ANN with binary spike events on an explicit clock. Each unit is a leaky integrate-and-fire neuron whose membrane potential is a linear filter on its input current and whose spike rule is a Heaviside threshold with reset and refractory guard. A network of $N$ such neurons driven by $d_{\text{in}}$ pre-synaptic inputs has a synaptic weight matrix $\mathbf{W}\in\mathbb{R}^{N\times d_{\text{in}}}$ as its only learnable object. The same substrate supports Hebbian-plastic associative memory by adding a second weight matrix $\mathbf{W}^{\text{assoc}}$ that is written at inference time by a local outer-product rule.
+
+> __Key Takeaways:__
+>
+> * **The LIF neuron is a leaky linear filter with a Heaviside threshold:** Between spikes, the membrane potential evolves under a one-dimensional linear ODE whose eigenvalue is the negative inverse of the membrane time constant, and the discrete-time recursion uses a zero-order-hold decay factor and subtracts the threshold the instant after a spike. A refractory guard caps the firing rate of every neuron at one spike per refractory window.
+> * **Network behavior is one matrix-vector product per time step plus a threshold:** The synaptic weight matrix multiplies the pre-synaptic spike vector to produce the input current, so simulation cost per step matches a dense ANN layer of the same size. Sparse spike traffic in the input and state vectors is what neuromorphic chips exploit at deployment.
+> * **H-Mem turns the LIF substrate into one-shot hetero-associative memory:** The encoders that produce keys and values are trained once by BPTT with surrogate gradients, but the association matrix is written on the fly by a local Hebbian rule on spike traces and read back by a single matrix-vector product. Memorizing a new key-value pair is one outer-product update, so the network supports one-shot learning at inference time without retraining any parameter.
+
+For an applied example building the rate-domain Hebbian memory module in isolation and characterizing its capacity and noise robustness, see the [L15a example notebook](CHEME-5820-L15a-Example-SpikingNeuralNetwork-Spring-2026.ipynb). The L15b lab lifts the same module onto LIF neurons with spike-trace plasticity and applies it to one-shot recall of MNIST images.
+___
