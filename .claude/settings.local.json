@@ -41,7 +41,8 @@
       "Bash(curl -sL https://raw.githubusercontent.com/varnerlab/VLQuantitativeFinancePackage.jl/main/src/Compute.jl)",
       "Bash(curl -sL https://raw.githubusercontent.com/varnerlab/VLQuantitativeFinancePackage.jl/main/src/__TRACKED_VAR__.jl)",
       "Bash(curl -sL \"https://raw.githubusercontent.com/varnerlab/VLQuantitativeFinancePackage.jl/main/src/Base.jl\")",
-      "Bash(julia --version)"
+      "Bash(julia --version)",
+      "Bash(grep *)"
     ]
   }
 }
