@@ -123,10 +123,10 @@
     {Node features\\[2pt] $x_v \in \mathbb{R}^{d_0}$};
 
 \node[eqcaption] at ($(box1.south) + (0,\eqyshift)$)
-    {$h^{(1)}_v = \sigma\!\left(W^{(1)} x_v + \displaystyle\sum_{u\in\mathcal{N}(v)} M^{(1)} x_u\right)$};
+    {$h^{(1)}_v = \sigma\!\left(\mathbf{W}^{(1)}_{\text{self}}\, x_v + \displaystyle\sum_{u\in\mathcal{N}(v)} \mathbf{W}^{(1)}_{\text{neigh}}\, x_u\right)$};
 
 \node[eqcaption] at ($(box2.south) + (0,\eqyshift)$)
-    {$h^{(2)}_v = \sigma\!\left(W^{(2)} h^{(1)}_v + \displaystyle\sum_{u\in\mathcal{N}(v)} M^{(2)} h^{(1)}_u\right)$};
+    {$h^{(2)}_v = \sigma\!\left(\mathbf{W}^{(2)}_{\text{self}}\, h^{(1)}_v + \displaystyle\sum_{u\in\mathcal{N}(v)} \mathbf{W}^{(2)}_{\text{neigh}}\, h^{(1)}_u\right)$};
 
 \node[eqcaption] at ($(box3.south) + (0,\eqyshift)$)
     {$z_G = \mathrm{READOUT}\!\bigl(\{h^{(2)}_v\}_{v\in V}\bigr)$\\[2pt]
