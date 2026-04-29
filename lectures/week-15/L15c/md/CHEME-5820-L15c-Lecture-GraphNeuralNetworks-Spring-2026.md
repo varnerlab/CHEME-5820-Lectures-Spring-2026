@@ -9,9 +9,9 @@ We follow the matrix-form derivation in [Wu et al. (2019), "A Comprehensive Surv
 >
 > By the end of this lecture, you should be able to:
 >
-> * __Write down the GCN propagation rule and identify each matrix:__ State the symmetric-normalized propagation matrix, the per-layer weight matrix, and the activation. Give the shape of each in terms of node count and feature dimensions, and describe the role of self-loops.
-> * __Cast a GNN layer in the message-passing framework:__ Identify the message function, the permutation-invariant aggregator, and the update function in GCN, GraphSAGE, and GAT. Explain why the aggregator must be permutation invariant, and what that buys for graphs of different sizes.
-> * __Match a GNN architecture to a learning task:__ Identify the readout for node classification, graph classification, and link prediction. State the loss for each, and explain why only the readout and loss change across tasks.
+> * __Explain why graphs need their own architecture:__ Identify what breaks when a graph is flattened for an MLP or ordered for an RNN. State the two requirements a GNN layer must satisfy: variable connectivity across inputs, and independence from the order in which neighbors are listed.
+> * __Describe a GNN layer as message, aggregate, update:__ Explain how a node revises its features by pooling information from its neighbors and combining it with its own. State why stacking layers expands a node's reach to more distant parts of the graph, and what oversmoothing means when the stack gets too deep.
+> * __Connect a GNN to a learning task:__ Identify how the same stack of layers supports node classification, graph classification, and link prediction by changing only the readout on top and the loss.
 
 Let's get started!
 ___
@@ -164,9 +164,9 @@ A GNN is a stack of message-passing layers that aggregate information one hop pe
 
 > __Key Takeaways:__
 >
-> * __Message passing is the unit operation of a GNN:__ Each node computes a message from each neighbor, aggregates with a permutation-invariant operator, and combines with its own features through a learnable update. Stacking $L$ layers gives every node a representation of its $L$-hop neighborhood.
-> * __GCN is the simplest message-passing layer that works well in practice:__ A shared linear transform as the message, a symmetric-normalized sum as the aggregator, and self-loops to fold a node's own features into its update. Only the per-layer weights are learned; the propagation matrix is fixed by the graph.
-> * __The same body supports node, graph, and link prediction:__ Node classification reads each row of the final feature matrix; graph classification pools rows to a graph-level vector; link prediction scores pairs of rows. Only the readout and loss change with the task.
+> * __A GNN layer is a local, shared update rule:__ Each node revises its features using only itself and its neighbors, through a learnable transform shared across every node in the graph. The same layer therefore applies to a graph of any size or shape.
+> * __Stacking is how distant information reaches a node:__ One layer reaches direct neighbors, two layers reach neighbors of neighbors, and so on. Going too deep blurs every node toward the same vector, an effect called oversmoothing.
+> * __GCN, GraphSAGE, and GAT differ only in how neighbors get pooled:__ All three follow the same message, aggregate, update template. They differ in whether the pooling weights come from graph structure (GCN), are chosen by the user (GraphSAGE), or are learned by the model (GAT).
 
 The companion example applies the GCN propagation rule to Zachary's Karate Club with untrained random weights and shows that the symmetric-normalized propagation pulls nodes in the same community together at modest depth, then collapses every embedding to one vector at large depth. The L15d lab trains a stack of message-passing layers on graph-classification (MUTAG molecules) with a real loss and optimizer.
 ___
