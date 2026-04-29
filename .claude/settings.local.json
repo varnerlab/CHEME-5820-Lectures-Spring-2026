@@ -42,7 +42,9 @@
       "Bash(curl -sL https://raw.githubusercontent.com/varnerlab/VLQuantitativeFinancePackage.jl/main/src/__TRACKED_VAR__.jl)",
       "Bash(curl -sL \"https://raw.githubusercontent.com/varnerlab/VLQuantitativeFinancePackage.jl/main/src/Base.jl\")",
       "Bash(julia --version)",
-      "Bash(grep *)"
+      "Bash(grep *)",
+      "Bash(open -g gnn-schematic.pdf)",
+      "Bash(pdfinfo gnn-schematic.pdf)"
     ]
   }
 }

@@ -1,0 +1,172 @@
+# L15c: Graph Neural Networks
+This lecture introduces _graph neural networks_ (GNNs), a family in which the input is itself a graph. An MLP operates on a flat vector and an RNN on an ordered sequence; a GNN operates on a set of nodes connected by edges, with each node carrying a feature vector and each edge optionally its own attributes.
+
+The unit operation is _message passing_: each node updates its feature vector by aggregating its neighbors' features and combining them with its own through a learned linear transform and a nonlinearity. Stacking $L$ such layers gives every node a representation of its $L$-hop neighborhood. We focus on the symmetric-normalized graph convolution of [Kipf and Welling (2017)](https://arxiv.org/abs/1609.02907), state the message-passing framework that generalizes it, and survey the alternative aggregators GraphSAGE and GAT.
+
+We follow the matrix-form derivation in [Wu et al. (2019), "A Comprehensive Survey on Graph Neural Networks"](https://arxiv.org/abs/1901.00596) and the introductory two-thirds of the [Stanford CS224W course](https://web.stanford.edu/class/cs224w/) (Lectures 3 and 4 of the 2024 offering, slides in `L15c/docs/`).
+
+> __Learning Objectives:__
+>
+> By the end of this lecture, you should be able to:
+>
+> * __Write down the GCN propagation rule and identify each matrix:__ State the symmetric-normalized propagation matrix, the per-layer weight matrix, and the activation. Give the shape of each in terms of node count and feature dimensions, and describe the role of self-loops.
+> * __Cast a GNN layer in the message-passing framework:__ Identify the message function, the permutation-invariant aggregator, and the update function in GCN, GraphSAGE, and GAT. Explain why the aggregator must be permutation invariant, and what that buys for graphs of different sizes.
+> * __Match a GNN architecture to a learning task:__ Identify the readout for node classification, graph classification, and link prediction. State the loss for each, and explain why only the readout and loss change across tasks.
+
+Let's get started!
+___
+
+## Example
+Today, we will use the following notebook to illustrate key concepts:
+
+> [▶ Untrained GCN propagation on Zachary's Karate Club](CHEME-5820-L15c-Example-GraphNeuralNetworks-Spring-2026.ipynb). In this example, we build the symmetric-normalized graph convolution of [Kipf and Welling (2017)](https://arxiv.org/abs/1609.02907) by hand on Zachary's Karate Club (34 nodes, 78 edges, two communities). The weight matrices are random and never trained. We sweep the depth $L$ of the GCN stack and project the resulting node embeddings to two dimensions to show that the propagation rule already separates the two communities at $L = 2$, and that pushing $L$ much further produces _oversmoothing_ in which all node embeddings collapse toward each other.
+
+___
+
+<div>
+    <center>
+      <img
+        src="figs/gnn-schematic.svg"
+        alt="GNN message-passing schematic: input graph, two stacked GNN layers updating node features by aggregating from neighbors, and a readout that pools node features into a graph-level prediction."
+        height="700"
+        width="950"
+      />
+    </center>
+</div>
+
+## Why Graph Neural Networks, and What is a Graph?
+The networks we have studied so far assume a fixed regular input. An MLP sees a length-$d$ vector; an RNN sees a sequence of length $T$ with a fixed ordering. Many problems lack this structure: a molecule is atoms connected by bonds, a social network is users connected by friendships, a citation graph is papers connected by references. The data is naturally a _graph_, and an MLP or RNN that flattens it throws away the connectivity.
+
+A GNN must meet two demands that conventional architectures cannot: __variable input size and connectivity__ (the number of nodes and edges changes from one input to the next), and __permutation invariance over neighbors__ (a node's label cannot depend on the order in which we list its neighbors). The aggregator over a node's neighbors must therefore be permutation invariant. The message-passing framework satisfies both by construction.
+
+We work with an undirected graph $G = (\mathcal{V}, \mathcal{E})$ with $N = \lvert\mathcal{V}\rvert$ nodes. Each node $i$ carries a feature vector $\mathbf{x}_{i}\in\mathbb{R}^{d}$, collected as rows of $\mathbf{X}\in\mathbb{R}^{N\times d}$.
+
+> __Graph notation__
+>
+> * __Adjacency matrix__ $\mathbf{A}\in\{0, 1\}^{N\times N}$ with $A_{ij} = 1$ if $(i, j)\in\mathcal{E}$ and $0$ otherwise. For an undirected graph $\mathbf{A} = \mathbf{A}^{\top}$.
+> * __Degree matrix__ $\mathbf{D}\in\mathbb{Z}_{\geq 0}^{N\times N}$, diagonal, with $D_{ii} = \sum_{j} A_{ij}$ the degree of node $i$.
+> * __Neighborhood__ $\mathcal{N}(i) = \{j\in\mathcal{V}\,\colon\,(i, j)\in\mathcal{E}\}$, the set of nodes adjacent to $i$. We write $\mathcal{N}(i)\cup\{i\}$ for the closed neighborhood that includes $i$ itself.
+> * __Feature matrix__ $\mathbf{X}\in\mathbb{R}^{N\times d}$, where row $i$ is the feature vector $\mathbf{x}_{i}$ of node $i$.
+> * __Self-loop adjacency__ $\hat{\mathbf{A}} = \mathbf{A} + \mathbf{I}_{N}$, with diagonal degree matrix $\hat{\mathbf{D}}$ defined by $\hat{D}_{ii} = 1 + \sum_{j} A_{ij}$.
+
+The adjacency matrix is the only structural object that enters the GNN; the rest is dense linear algebra. Edge features $\mathbf{e}_{ij}\in\mathbb{R}^{d_{e}}$ can be added when present (e.g. bond type), but the architectures here operate on $\mathbf{A}$ and $\mathbf{X}$ alone.
+
+___
+
+## Message Passing, GCN, and Two Generalizations
+A GNN is defined by what each node does at each layer. The standard recipe has three steps applied at every node $i$ and layer $\ell$.
+
+> __Message-Passing Layer__
+>
+> Let $\mathbf{h}_{i}^{(\ell)}\in\mathbb{R}^{d_{\ell}}$ be the feature vector of node $i$ at layer $\ell$, with $\mathbf{h}_{i}^{(0)} = \mathbf{x}_{i}$. Each layer applies, for every node $i\in\mathcal{V}$:
+> $$
+\boxed{
+\begin{align*}
+\text{(message)} \quad     & \mathbf{m}_{ij}^{(\ell)} = \phi^{(\ell)}\!\bigl(\mathbf{h}_{i}^{(\ell)},\,\mathbf{h}_{j}^{(\ell)},\,\mathbf{e}_{ij}\bigr),\quad j\in\mathcal{N}(i) \\
+\text{(aggregate)} \quad   & \mathbf{a}_{i}^{(\ell)} = \bigoplus_{j\in\mathcal{N}(i)}\,\mathbf{m}_{ij}^{(\ell)} \\
+\text{(update)} \quad      & \mathbf{h}_{i}^{(\ell + 1)} = \psi^{(\ell)}\!\bigl(\mathbf{h}_{i}^{(\ell)},\,\mathbf{a}_{i}^{(\ell)}\bigr)
+\end{align*}}
+> $$
+> where $\phi^{(\ell)}:\mathbb{R}^{d_{\ell}}\times\mathbb{R}^{d_{\ell}}\times\mathbb{R}^{d_{e}}\rightarrow\mathbb{R}^{d_{m}}$ is the message function (typically a learnable linear transform), $\bigoplus:(\mathbb{R}^{d_{m}})^{*}\rightarrow\mathbb{R}^{d_{m}}$ is a permutation-invariant aggregator over the neighbor set (sum, mean, max, or attention-weighted sum), and $\psi^{(\ell)}:\mathbb{R}^{d_{\ell}}\times\mathbb{R}^{d_{m}}\rightarrow\mathbb{R}^{d_{\ell + 1}}$ is the update function (typically a single linear layer plus a nonlinearity).
+
+After $L$ layers, $\mathbf{h}_{i}^{(L)}$ depends on every node within $L$ hops of $i$; stacking is the only way distant information reaches a node. Two properties matter throughout. __Permutation invariance__: the aggregator $\bigoplus$ must be permutation invariant (sum, mean, max, and softmax-weighted sum qualify; concatenation does not), so the same layer handles a node with three neighbors and one with thirty. __Weight sharing across nodes__: $\phi^{(\ell)}$ and $\psi^{(\ell)}$ are shared across all nodes at layer $\ell$, so the parameter count is independent of graph size. Different GNN architectures differ only in $\phi$, $\bigoplus$, and $\psi$; we cover three canonical choices.
+
+[Kipf and Welling (2017)](https://arxiv.org/abs/1609.02907) propose the simplest message-passing layer that still works well on standard benchmarks: the message is a linear projection of the neighbor, the aggregator is a degree-normalized sum, and the update is the aggregated message through an elementwise nonlinearity. The matrix form is a single propagation rule that updates the entire feature matrix in one multiply.
+
+> __GCN propagation rule__
+>
+> Let $\hat{\mathbf{A}} = \mathbf{A} + \mathbf{I}_{N}$ be the adjacency matrix with self-loops, $\hat{\mathbf{D}}$ its diagonal degree matrix, and $\mathbf{P} = \hat{\mathbf{D}}^{-1/2}\,\hat{\mathbf{A}}\,\hat{\mathbf{D}}^{-1/2}\in\mathbb{R}^{N\times N}$ the symmetric-normalized propagation matrix. With per-layer weight matrix $\mathbf{W}^{(\ell)}\in\mathbb{R}^{d_{\ell}\times d_{\ell + 1}}$ and elementwise activation $\sigma:\mathbb{R}\rightarrow\mathbb{R}$, the GCN propagation rule is
+> $$
+\boxed{
+\mathbf{H}^{(\ell + 1)} = \sigma\!\left(\mathbf{P}\,\mathbf{H}^{(\ell)}\,\mathbf{W}^{(\ell)}\right),\qquad \mathbf{H}^{(0)} = \mathbf{X}\in\mathbb{R}^{N\times d_{0}}
+}
+> $$
+> where $\mathbf{H}^{(\ell)}\in\mathbb{R}^{N\times d_{\ell}}$ is the layer-$\ell$ feature matrix.
+
+Three design choices are baked in. __Self-loops__ $\mathbf{A} + \mathbf{I}$ fold a node's own feature into its update under the same weight matrix as its neighbors. __Symmetric normalization__ replaces $\hat{A}_{ij}$ with $1/\sqrt{\hat{d}_{i}\hat{d}_{j}}$, which caps the largest eigenvalue of $\mathbf{P}$ at one and stabilizes activations; $\mathbf{P}$ is fixed once $\mathbf{A}$ is, only $\mathbf{W}^{(\ell)}$ changes per layer. __A single shared linear transform__ $\mathbf{W}^{(\ell)}$ updates every node's features in one dense matmul, at cost $\mathcal{O}(N\,d_{\ell}\,d_{\ell + 1} + \lvert\mathcal{E}\rvert\,d_{\ell})$ per layer.
+
+> __Dimension dictionary (GCN layer)__
+>
+> * $\mathbf{X}\in\mathbb{R}^{N\times d_{0}}$ is the input feature matrix.
+> * $\mathbf{H}^{(\ell)}\in\mathbb{R}^{N\times d_{\ell}}$ is the layer-$\ell$ feature matrix, with $\mathbf{H}^{(0)} = \mathbf{X}$.
+> * $\mathbf{W}^{(\ell)}\in\mathbb{R}^{d_{\ell}\times d_{\ell + 1}}$ is the layer-$\ell$ learnable weight matrix.
+> * $\mathbf{A}\in\{0, 1\}^{N\times N}$ is the adjacency matrix; $\hat{\mathbf{A}} = \mathbf{A} + \mathbf{I}_{N}$.
+> * $\hat{\mathbf{D}}\in\mathbb{Z}_{\geq 0}^{N\times N}$ is the diagonal degree matrix of $\hat{\mathbf{A}}$.
+> * $\mathbf{P} = \hat{\mathbf{D}}^{-1/2}\,\hat{\mathbf{A}}\,\hat{\mathbf{D}}^{-1/2}\in\mathbb{R}^{N\times N}$ is the propagation matrix, symmetric and fixed once $\mathbf{A}$ is fixed.
+> * $\sigma:\mathbb{R}\rightarrow\mathbb{R}$ is the elementwise activation, applied componentwise. Common choices are ReLU and tanh.
+
+Two layers of GCN suffice for many benchmarks. Stacking too deep causes __oversmoothing__: each application of $\mathbf{P}$ averages a node with its neighbors, so as $L$ grows every embedding approaches the same limit. The example notebook shows this by sweeping $L$ from $1$ to $20$ and tracking how pairwise cosine similarity rises toward one.
+
+GCN fixes the aggregator to a degree-normalized sum. Two generalizations give the practitioner an explicit knob: GraphSAGE swaps the fixed sum for any permutation-invariant aggregator and splits self-and-neighbor weights into two matrices; GAT replaces the structural weight $1/\sqrt{\hat{d}_{i}\hat{d}_{j}}$ with a learned attention weight $\alpha_{ij}$ over each node's neighborhood. Each is given below.
+
+> __GraphSAGE update rule__
+>
+> [Hamilton, Ying, and Leskovec (2017)](https://arxiv.org/abs/1706.02216) factor the GCN's "self plus neighbors" sum into two separate weight matrices and let the user pick the aggregator. With learnable weight matrices $\mathbf{W}_{\text{self}}^{(\ell)}, \mathbf{W}_{\text{neigh}}^{(\ell)}\in\mathbb{R}^{d_{\ell}\times d_{\ell + 1}}$ and a permutation-invariant aggregator $\bigoplus$ over the neighbor set (mean, max, or LSTM over a sampled subset of neighbors), the GraphSAGE update is
+> $$
+\boxed{
+\mathbf{h}_{i}^{(\ell + 1)} = \sigma\!\left(\mathbf{W}_{\text{self}}^{(\ell)\top}\,\mathbf{h}_{i}^{(\ell)} \;+\; \mathbf{W}_{\text{neigh}}^{(\ell)\top}\,\Bigl(\bigoplus_{j\in\mathcal{N}(i)}\mathbf{h}_{j}^{(\ell)}\Bigr)\right).
+}
+> $$
+> The split lets the network treat self vs. neighbor information differently, at the cost of doubling the per-layer parameter count. The S2025 L15d lab's `MyCustomConvolutionLayerModel` uses this split with a sum aggregator.
+
+> __GAT attention rule__
+>
+> [Veličković, Cucurull, Casanova, Romero, Liò, and Bengio (2018)](https://arxiv.org/abs/1710.10903) replace the fixed degree-based weighting of GCN with a _learned_ attention weighting over neighbors. With shared linear transform $\mathbf{W}^{(\ell)}\in\mathbb{R}^{d_{\ell}\times d_{\ell + 1}}$ and attention vector $\mathbf{a}^{(\ell)}\in\mathbb{R}^{2\,d_{\ell + 1}}$, the unnormalized attention score for the edge $(i, j)$ is
+> $$ e_{ij}^{(\ell)} = \mathrm{LeakyReLU}\!\bigl(\mathbf{a}^{(\ell)\top}[\mathbf{W}^{(\ell)\top}\mathbf{h}_{i}^{(\ell)};\,\mathbf{W}^{(\ell)\top}\mathbf{h}_{j}^{(\ell)}]\bigr), $$
+> normalized by softmax over each node's closed neighborhood to give $\alpha_{ij}^{(\ell)} = \exp(e_{ij}^{(\ell)})/\sum_{k\in\mathcal{N}(i)\cup\{i\}}\exp(e_{ik}^{(\ell)})$, and the GAT update is
+> $$
+\boxed{
+\mathbf{h}_{i}^{(\ell + 1)} = \sigma\!\left(\sum_{j\in\mathcal{N}(i)\cup\{i\}}\alpha_{ij}^{(\ell)}\,\mathbf{W}^{(\ell)\top}\mathbf{h}_{j}^{(\ell)}\right),
+}
+> $$
+> typically with $K$ parallel attention heads whose outputs are concatenated. GCN's structural weighting is replaced by a content-aware weighting that depends on the features, at the cost of one extra vector $\mathbf{a}^{(\ell)}$ per head per layer.
+
+> __GCN, GraphSAGE, and GAT in one table__
+>
+> | Layer | Message $\phi$ | Aggregator $\bigoplus$ | Update $\psi$ |
+> |---|---|---|---|
+> | GCN     | $\mathbf{W}^{(\ell)\top}\mathbf{h}_{j}^{(\ell)}$ | $\sum_{j\in\mathcal{N}(i)\cup\{i\}}1/\sqrt{\hat{d}_{i}\hat{d}_{j}}\,\bigl(\,\cdot\,\bigr)$ | $\sigma(\,\cdot\,)$ |
+> | GraphSAGE | $\mathbf{h}_{j}^{(\ell)}$ | mean, max, or LSTM over $\mathcal{N}(i)$ | $\sigma\bigl(\mathbf{W}_{\text{self}}^{(\ell)\top}\mathbf{h}_{i}^{(\ell)} + \mathbf{W}_{\text{neigh}}^{(\ell)\top}\,\bigl(\,\cdot\,\bigr)\bigr)$ |
+> | GAT     | $\alpha_{ij}^{(\ell)}\,\mathbf{W}^{(\ell)\top}\mathbf{h}_{j}^{(\ell)}$ | $\sum_{j\in\mathcal{N}(i)\cup\{i\}}\bigl(\,\cdot\,\bigr)$ | $\sigma(\,\cdot\,)$ |
+
+___
+
+## Tasks, Applications, and a Comparison to Other Architectures
+A GNN computes $\mathbf{H}^{(L)}\in\mathbb{R}^{N\times d_{L}}$ at the final layer. The __readout__ on top of $\mathbf{H}^{(L)}$ determines the prediction; the rest of the architecture is unchanged across tasks.
+
+> __Three GNN tasks__
+>
+> * __Node classification:__ Each node $i$ has a label $y_{i}\in\{1, \dots, C\}$ and the network predicts $\hat{y}_{i}$ from $\mathbf{h}_{i}^{(L)}$ directly, e.g. $\hat{\mathbf{y}}_{i} = \mathrm{softmax}\!\bigl(\mathbf{W}_{\text{out}}^{\top}\mathbf{h}_{i}^{(L)} + \mathbf{b}_{\text{out}}\bigr)$ with $\mathbf{W}_{\text{out}}\in\mathbb{R}^{d_{L}\times C}$. Training minimizes the cross-entropy over the labeled subset of nodes; the rest of the graph contributes its features and edges but not its labels (the _semi-supervised_ regime of the original GCN paper).
+> * __Graph classification:__ Each graph $G$ has a single label $y_{G}\in\{1, \dots, C\}$. The per-node features are __pooled__ to a graph-level vector $\mathbf{h}_{G}\in\mathbb{R}^{d_{L}}$ via a permutation-invariant readout (mean, sum, or max over rows of $\mathbf{H}^{(L)}$), then $\mathbf{h}_{G}$ is passed to a dense classifier. This is the regime of the L15d lab on the MUTAG dataset.
+> * __Link prediction:__ The network predicts whether an edge $(i, j)$ exists from the pair $(\mathbf{h}_{i}^{(L)}, \mathbf{h}_{j}^{(L)})$, typically via an inner-product or bilinear scorer $s_{ij} = \mathbf{h}_{i}^{(L)\top}\mathbf{M}\,\mathbf{h}_{j}^{(L)}$ followed by a sigmoid, with $\mathbf{M}\in\mathbb{R}^{d_{L}\times d_{L}}$. Training uses a binary cross-entropy over a sampled mix of true and corrupted edges.
+
+The network body is identical across the three tasks; only the readout and loss change. Graph-classification GNNs are widely applied to molecular property prediction: each molecule is a graph, atoms are nodes with element features, bonds are edges with bond-type features, and the label is a property like toxicity, solubility, or binding affinity. [Zhang et al. (2022)](https://pubmed.ncbi.nlm.nih.gov/35074533/) survey GNN methods for drug-target interaction prediction; [Wang, Kumar, and Rajapakse (2025)](https://rdcu.be/ejGUL) report drug-mechanism prediction with explainable GNNs; the L15d lab applies the same setup to MUTAG (mutagenic-effect prediction).
+
+A GNN sits in the same family of differentiable models as an MLP or RNN, but the input structure and unit operation differ on every axis that matters in practice.
+
+> __Comparison of architectures__
+>
+> | Property | MLP | RNN | GNN |
+> |---|---|---|---|
+> | Input structure | Flat vector $\mathbb{R}^{d}$ | Sequence of length $T$ | Graph $(\mathcal{V}, \mathcal{E})$, variable $N$ |
+> | Unit operation | Dense matmul | Recurrence on a hidden state | Aggregate over neighbors |
+> | Weight sharing | None | Across time steps | Across nodes |
+> | Permutation invariance | Not built in | Not built in | Built in (over neighbor sets) |
+> | Receptive field after $L$ layers | Whole input | Last $L$ time steps | $L$-hop neighborhood |
+> | Native data | Tabular | Sequences (text, audio) | Molecules, networks, citations |
+
+Two consequences. A GNN with $L$ layers sees information at most $L$ hops away, so deep stacks are needed for large graphs; in practice oversmoothing keeps $L$ small (usually $L\in\{2, 3, 4\}$). The same architecture handles graphs of any size and shape without retraining; the L15d lab uses this to train on $150$ MUTAG graphs of varying sizes and test on $38$ unseen ones with one parameter set.
+
+___
+
+## Summary
+A GNN is a stack of message-passing layers that aggregate information one hop per layer. The Kipf and Welling GCN fixes the message to a linear projection, the aggregator to a degree-normalized sum, and the update to that aggregated message through a nonlinearity. The propagation matrix $\mathbf{P} = \hat{\mathbf{D}}^{-1/2}(\mathbf{A} + \mathbf{I})\hat{\mathbf{D}}^{-1/2}$ depends only on graph structure; only the per-layer weights are learned. Different message and aggregator choices give GraphSAGE, GAT, and the broader family.
+
+> __Key Takeaways:__
+>
+> * __Message passing is the unit operation of a GNN:__ Each node computes a message from each neighbor, aggregates with a permutation-invariant operator, and combines with its own features through a learnable update. Stacking $L$ layers gives every node a representation of its $L$-hop neighborhood.
+> * __GCN is the simplest message-passing layer that works well in practice:__ A shared linear transform as the message, a symmetric-normalized sum as the aggregator, and self-loops to fold a node's own features into its update. Only the per-layer weights are learned; the propagation matrix is fixed by the graph.
+> * __The same body supports node, graph, and link prediction:__ Node classification reads each row of the final feature matrix; graph classification pools rows to a graph-level vector; link prediction scores pairs of rows. Only the readout and loss change with the task.
+
+The companion example applies the GCN propagation rule to Zachary's Karate Club with untrained random weights and shows that the symmetric-normalized propagation pulls nodes in the same community together at modest depth, then collapses every embedding to one vector at large depth. The L15d lab trains a stack of message-passing layers on graph-classification (MUTAG molecules) with a real loss and optimizer.
+___
