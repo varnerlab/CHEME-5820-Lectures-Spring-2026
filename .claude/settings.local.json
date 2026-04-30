@@ -44,7 +44,8 @@
       "Bash(julia --version)",
       "Bash(grep *)",
       "Bash(open -g gnn-schematic.pdf)",
-      "Bash(pdfinfo gnn-schematic.pdf)"
+      "Bash(pdfinfo gnn-schematic.pdf)",
+      "Read(//Users/jeffreyvarner/Desktop/julia_work/CHEME-5820-instances/**)"
     ]
   }
 }
