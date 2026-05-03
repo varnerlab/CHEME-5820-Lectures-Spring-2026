@@ -167,7 +167,5 @@ Deep Q-learning replaces the tabular Q-function of standard Q-learning with a ne
 > * __Replay buffer plus target network are the two stabilizers:__ Sampling random mini-batches from a fixed-size circular buffer breaks the temporal correlation between consecutive transitions, and the periodically synced target network keeps the bootstrap target from chasing the parameters being trained. Both are needed for stable learning.
 > * __The loss is on the action that was actually taken:__ The mean squared loss compares the target value to $[Q_{\theta}(s_{i})]_{a_{i}}$, the Q-value of the action stored in the replay tuple, not to the whole vector. A single gradient step per mini-batch keeps training online and avoids overfitting to any one batch.
 
-The companion lab notebook [L16c](../L16c/) implements a DQN agent on a continuous-valued control task and exercises every component covered here: replay buffer, target network, $\epsilon$-greedy exploration, and the mean squared bootstrap loss.
+The companion lab implements a DQN agent on a continuous-valued control task and exercises every component covered here: replay buffer, target network, $\epsilon$-greedy exploration, and the mean squared bootstrap loss.
 ___
-
-
