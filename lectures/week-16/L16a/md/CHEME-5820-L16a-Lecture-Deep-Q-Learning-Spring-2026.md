@@ -18,6 +18,13 @@ The sources for this lecture include:
 Let's go!
 ___
 
+## Examples
+Today, we will use the following examples to illustrate key concepts:
+
+> [▶ Solve the lava-world navigation problem using Q-learning](CHEME-5820-L16a-Example-LavaWorldProblem-Q-Learning-Spring-2026.ipynb). In this example, we'll revisit the lava-world navigation problem (which we previously solved using Value Iteration) and implement the Q-learning algorithm to help an agent learn to navigate safely to its goal while avoiding hazards. 
+
+___
+
 ## Reinforcement Learning Problem
 Suppose we have an agent that can be in a state $s \in \mathcal{S}$ and can take an action $a \in \mathcal{A}$. After taking action $a$ in state $s$, the agent receives a reward $r$. But how does the agent learn to choose the best possible action in each state to maximize its cumulative reward over time?
 
@@ -83,7 +90,11 @@ Q-learning converges to the optimal policy under two key theoretical conditions 
 * __Learning rate decay__: The learning rate $\alpha_{t}$ must satisfy $\sum_{t=0}^\infty \alpha_t(s, a) = \infty$ and $\sum_{t=0}^\infty \alpha_t^2(s, a) < \infty$ for all state-action pairs, ensuring sufficient initial updates while stabilizing over time. Setting $\alpha_{t+1} \gets \beta\alpha_{t}$ where $\beta<1$ is a common choice.
 * __Infinite exploration__: All state-action pairs must be visited infinitely often. This condition holds for $\epsilon$-greedy policies with persistent exploration, i.e., $\epsilon_{t} > 0\,\,\forall{t}$.
 
-See the [Q-learning lecture notes from L8c for more details](https://htmlview.glitch.me/?https://github.com/varnerlab/CHEME-5820-Lectures-Spring-2025/blob/main/lectures/week-8/L8c/CHEME-5820-L8c-QLearning-S2025.html).
+Let's do an example to see how this works in practice!
+
+> __Example__:
+>
+> [▶ Solve the lava-world navigation problem using Q-learning](CHEME-5820-L16a-Example-LavaWorldProblem-Q-Learning-Spring-2026.ipynb). In this example, we'll revisit the lava-world navigation problem (which we previously solved using Value Iteration) and implement the Q-learning algorithm to help an agent learn to navigate safely to its goal while avoiding hazards. 
 
 ___
 
@@ -106,7 +117,9 @@ All of the deployments above are from the era _before_ the [transformer revoluti
 
 > __Why now: Is RL back at the AI frontier?__
 >
-> DQN is the canonical entry point into a family of methods now driving some of the largest bets in AI. [DeepSeek-R1's training pipeline](https://arxiv.org/abs/2501.12948) relies primarily on reinforcement learning rather than human-labeled examples to elicit chain-of-thought behavior (the R1-Zero variant uses pure RL from a base model with rule-based rewards). In April 2026, [David Silver raised $1.1B for Ineffable Intelligence](https://techcrunch.com/2026/04/27/deepminds-david-silver-just-raised-1-1b-to-build-an-ai-that-learns-without-human-data/) to pursue [agents that learn without human-generated data](https://www.ineffable.ai). The DQN ideas in this lecture, namely function approximation for value, replay, and target networks, are the foundation those modern systems generalize.
+> DQN is the canonical entry point into a family of methods now driving some of the largest bets in AI. [DeepSeek-R1's training pipeline](https://arxiv.org/abs/2501.12948) relies primarily on reinforcement learning rather than human-labeled examples to elicit chain-of-thought behavior (the R1-Zero variant uses pure RL from a base model with rule-based rewards). 
+>
+> In April 2026, [David Silver raised $1.1B for Ineffable Intelligence](https://techcrunch.com/2026/04/27/deepminds-david-silver-just-raised-1-1b-to-build-an-ai-that-learns-without-human-data/) to pursue [agents that learn without human-generated data](https://www.ineffable.ai). The DQN ideas in this lecture, namely function approximation for value, replay, and target networks, are the foundation these modern systems generalize.
 
 The next subsection writes down the four moving parts (Q-network, target network, replay buffer, $\epsilon$-greedy policy) and the algorithm that ties them together.
 
@@ -145,7 +158,7 @@ Three implementation choices govern whether DQN trains stably or diverges: how t
 
 > __Replay buffer mechanics and training cadence__
 >
-> The replay buffer $\mathcal{B}$ has a fixed capacity $M$ (typically $10^{5}$–$10^{6}$ transitions); when full, the oldest transition is evicted FIFO. Training does not start at step $t=1$: the agent first runs a _warm-up phase_, populating $\mathcal{B}$ with $N_{\text{warm}}$ transitions (typically $10^{3}$–$10^{4}$) under a purely exploratory policy, with no gradient updates. 
+> The replay buffer $\mathcal{B}$ has a fixed capacity $M$ (typically $10^{5}$ to $10^{6}$ transitions); when full, the oldest transition is evicted FIFO. Training does not start at step $t=1$: the agent first runs a _warm-up phase_, populating $\mathcal{B}$ with $N_{\text{warm}}$ transitions (typically $10^{3}$ to $10^{4}$) under a purely exploratory policy, with no gradient updates. 
 >
 > Once $|\mathcal{B}|\geq N_{\text{warm}}$, mini-batches of $B$ transitions are drawn uniformly at random from $\mathcal{B}$ at every environment step (or every few steps to amortize cost). Random sampling decorrelates consecutive transitions and lets each experience contribute to many gradient updates over its lifetime in the buffer.
 
@@ -165,7 +178,9 @@ Deep Q-learning replaces the tabular Q-function of standard Q-learning with a ne
 >
 > * __DQN trades a table for a function approximator:__ The Q-table grows with the number of state-action pairs and becomes infeasible in high dimensions. A neural network shares parameters across states, generalizes to states it has never visited, and reduces the storage cost from one entry per state-action pair to one fixed-size weight vector.
 > * __Replay buffer plus target network are the two stabilizers:__ Sampling random mini-batches from a fixed-size circular buffer breaks the temporal correlation between consecutive transitions, and the periodically synced target network keeps the bootstrap target from chasing the parameters being trained. Both are needed for stable learning.
-> * __The loss is on the action that was actually taken:__ The mean squared loss compares the target value to $[Q_{\theta}(s_{i})]_{a_{i}}$, the Q-value of the action stored in the replay tuple, not to the whole vector. A single gradient step per mini-batch keeps training online and avoids overfitting to any one batch.
+> * __The loss is on the action that was actually taken:__ The mean squared loss compares the target value to the Q-value of the action stored in the replay tuple, not to the whole output vector. A single gradient step per mini-batch keeps training online and avoids overfitting to any one batch.
 
 The companion lab implements a DQN agent on a continuous-valued control task and exercises every component covered here: replay buffer, target network, $\epsilon$-greedy exploration, and the mean squared bootstrap loss.
 ___
+
+
